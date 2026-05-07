@@ -1897,6 +1897,22 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
             startOrbotAsyncIfNeeded()
 
+            // If WARP was enabled when the app/VPN was previously killed, the libusque.so
+            // process is gone (in-memory ref lost) but usqueEnabled is still true in prefs.
+            // Restart it here so the proxy is live before the VPN tunnel is configured.
+            if (persistentState.usqueEnabled && !UsqueManager.isRunning()) {
+                io("usqueRestart") {
+                    Logger.i(LOG_TAG_VPN, "usque: restarting socks proxy after vpn restart")
+                    val ok = UsqueManager.startSocksProxy(applicationContext)
+                    Logger.i(LOG_TAG_VPN, "usque: socks proxy restart result: $ok")
+                    if (!ok) {
+                        persistentState.usqueEnabled = false
+                        appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
+                        Logger.w(LOG_TAG_VPN, "usque: socks proxy restart failed, disabling warp")
+                    }
+                }
+            }
+
             val isNewVpn = connectionMonitor.onVpnStart(this)
 
             if (isNewVpn) {

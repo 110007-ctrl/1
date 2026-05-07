@@ -144,6 +144,18 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
         refreshOrbotUi()
         handleProxyUi()
         displayWireguardUi()
+        // If WARP was enabled but the process died (app killed, VPN restarted),
+        // attempt a silent restart so the switch shows the correct state.
+        if (persistentState.usqueEnabled && !UsqueManager.isRunning()) {
+            io {
+                val ok = UsqueManager.startSocksProxy(this@ProxySettingsActivity)
+                if (!ok) {
+                    persistentState.usqueEnabled = false
+                    appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
+                }
+                uiCtx { updateWarpUi() }
+            }
+        }
     }
 
     private fun initView() {
