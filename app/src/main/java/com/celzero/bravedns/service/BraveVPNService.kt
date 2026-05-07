@@ -2655,12 +2655,19 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
             AppConfig.ProxyProvider.CUSTOM -> {
                 // custom either means socks5 or http proxy
-                // socks5 proxy requires app to be excluded from vpn, so restart vpn
                 val isSocks5 = tunProxyMode == AppConfig.TunProxyMode.SOCKS5
                 val proxy = if (isSocks5) appConfig.getSocks5ProxyDetails() else appConfig.getHttpProxyDetails()
                 val proxyDesc = if (proxy != null) "${proxy.proxyName} (${proxy.proxyIP}:${proxy.proxyPort})" else "none"
                 val reason = "customProxy: $proxyDesc, type: ${if (isSocks5) "socks5" else "http"}"
-                vpnRestartTrigger.value = reason
+                // Loopback SOCKS5 (WARP / libusque.so on 127.0.0.1) does not need a full VPN
+                // restart — setCustomProxy is enough. Restarting drops traffic and causes the
+                // home button to flash Start then Stop.
+                val isLoopbackSocks5 = isSocks5 &&
+                    (proxy?.proxyIP == "127.0.0.1" || proxy?.proxyIP == "::1")
+                if (!isLoopbackSocks5) {
+                    vpnRestartTrigger.value = reason
+                }
+                Logger.i(LOG_TAG_VPN, "$reason, vpnRestart=${!isLoopbackSocks5}")
                 vpnAdapter?.setCustomProxy(tunProxyMode)
             }
         }
