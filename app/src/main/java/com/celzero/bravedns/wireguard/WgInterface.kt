@@ -208,29 +208,29 @@ class WgInterface private constructor(builder: Builder) {
      * below is the sample file content for the Interface section, similar will be stored in the
      * wg[0-9].conf file
      * [Interface]
-     * Address = 100.80.213.126/32
+     * Address = <redacted-address>/32
      * DNS = 10.255.255.3
-     * PrivateKey = KBdV2Iv+poXZkCOZukSo30modVHqyO5+GCdfhP4n40I=
+     * PrivateKey = <redacted>
      *
      * [Peer]
      * AllowedIPs = 0.0.0.0/0, ::/0
-     * Endpoint = yul-359-wg.whiskergalaxy.com:443
-     * Endpoint = yul-359-wg.whiskergalaxy.com:443
-     * PreSharedKey = VQoBVQxMmgttgGh9JCBwOPiwnFYV6/Py1tRi/f38DEI=
-     * PublicKey = nfFRpFZ0ZXWVoz8C4gP5ti7V1snFT1gV8EcIxTWJtB4=
+     * Endpoint = <redacted-endpoint>
+     * Endpoint = <redacted-endpoint>
+     * PreSharedKey = <redacted>
+     * PublicKey = <redacted>
      *
      * below is converted to wg-quick format
      * [Interface]
-     * Address = 100.80.213.126/32
+     * Address = <redacted-address>/32
      * DNS = 10.255.255.3
-     * PrivateKey = KBdV2Iv+poXZkCOZukSo30modVHqyO5+GCdfhP4n40I=
+     * PrivateKey = <redacted>
      *
      * [Peer]
      * AllowedIPs = 0.0.0.0/0, ::/0
-     * Endpoint = yul-359-wg.whiskergalaxy.com:443
-     * Endpoint = yul-359-wg.whiskergalaxy.com:443
-     * PreSharedKey = VQoBVQxMmgttgGh9JCBwOPiwnFYV6/Py1tRi/f38DEI=
-     * PublicKey = nfFRpFZ0ZXWVoz8C4gP5ti7V1snFT1gV8EcIxTWJtB4=
+     * Endpoint = <redacted-endpoint>
+     * Endpoint = <redacted-endpoint>
+     * PreSharedKey = <redacted>
+     * PublicKey = <redacted>
      *
      */
     fun toWgQuickString(): String {
@@ -280,7 +280,7 @@ class WgInterface private constructor(builder: Builder) {
      * below is the converted format for the userspace string
      *
      * private_key=281755d88bfea685d9902399ba44a8df49a87551eac8ee7e18275f84fe27e342
-     * address=100.80.213.126/32
+     * address=<redacted-address>/32
      * dns=10.255.255.3
      * mtu=1280
      * replace_peers=true
@@ -288,13 +288,13 @@ class WgInterface private constructor(builder: Builder) {
      * allowed_ip=0.0.0.0/0
      * allowed_ip=::/0
      * endpoint=172.98.68.207:443
-     * endpoint=yul-359-wg.whiskergalaxy.com:443
+     * endpoint=<redacted-endpoint>
      * preshared_key=550a01550c4c9a0b6d80687d24207038f8b09c5615ebf3f2d6d462fdfdfc0c42
      *
      * below is converted to amnezia userspace format
      *
      * private_key=281755d88bfea685d9902399ba44a8df49a87551eac8ee7e18275f84fe27e342
-     * address=100.80.213.126/32
+     * address=<redacted-address>/32
      * dns=10.255.255.3
      * mtu=1280
      * jc=0
@@ -311,7 +311,7 @@ class WgInterface private constructor(builder: Builder) {
      * allowed_ip=0.0.0.0/0
      * allowed_ip=::/0
      * endpoint=172.98.68.207:443
-     * endpoint=yul-359-wg.whiskergalaxy.com:443
+     * endpoint=<redacted-endpoint>
      * preshared_key=550a01550c4c9a0b6d80687d24207038f8b09c5615ebf3f2d6d462fdfdfc0c42
      *
      */
