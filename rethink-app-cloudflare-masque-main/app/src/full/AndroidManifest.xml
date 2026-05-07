@@ -1,0 +1,290 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+        FIX #12 — ACCESS_BACKGROUND_LOCATION moved here from the main manifest.
+
+        This permission is required only in the "full" flavor because SSID-based
+        WireGuard rules (the feature that reads the connected WiFi network name) live
+        exclusively in this flavor.
+
+        maxSdkVersion="32" ensures the permission is never requested on Android 13+
+        (API 33+), where NetworkCapabilities / WifiInfo can return the SSID without
+        any location grant.  On Android 13+ the app must use NetworkCallback with
+        ACCESS_NETWORK_STATE instead of LocationManager.
+
+        On Android 10–12 (API 29–32) background location IS required to read the SSID
+        when the VPN service needs to re-evaluate rules after the screen turns off.
+        The VPN service runs as a foreground service (persistent notification) but
+        Android still gates SSID reads on the location permission in this range.
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        android:maxSdkVersion="32"
+        tools:targetApi="29" />
+
+    <!--
+        FIX #4 — VpnControlReceiver: add android:permission to the receiver declaration.
+
+        The receiver is intentionally exported so that third-party automation apps
+        (e.g. Tasker, MacroDroid) can start/stop the VPN.  However, the previous
+        declaration had NO android:permission attribute, meaning ANY installed app
+        could send a broadcast to it.
+
+        We declare a custom permission at the normal protection level so that:
+          (a) Senders must explicitly declare <uses-permission> for it, which means
+              users who inspect permissions can see which apps request it.
+          (b) It documents the intent — this receiver is an explicit public API for
+              automation apps, not an internal component.
+
+        We do NOT use protectionLevel="signature" because that would prevent legitimate
+        third-party automation apps from sending the broadcast.  Instead, identity
+        verification is handled in code (see VpnControlReceiver.kt):
+          • API 34+: sentFromPackage / sentFromUid (OS-verified, cannot be spoofed).
+          • Pre-API 34: package name from EXTRA_PACKAGE_NAME / EXTRA_INTENT with
+            PackageManager signature verification as defence-in-depth.
+          • The old self-reported "sender" string extra has been removed because any
+            app can put an arbitrary string in an intent extra.
+    -->
+    <permission
+        android:name="com.celzero.bravedns.permission.VPN_CONTROL"
+        android:label="Control RethinkDNS VPN"
+        android:description="@string/app_name"
+        android:protectionLevel="normal" />
+
+    <application
+        android:name=".RethinkDnsApplication"
+        android:theme="@style/AppThemeInitial">
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
+
+        <activity
+            android:name=".ui.activity.FirewallActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity android:name=".ui.HomeScreenActivity"
+            android:launchMode="singleTask" />
+        <activity
+            android:name=".ui.activity.AppLockActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.rbk" />
+                <data android:host="*" />
+            </intent-filter>
+        </activity>
+        <!-- Alias for AppLockActivity -->
+        <activity-alias
+            android:name=".ui.activity.LauncherAliasAppLock"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.activity.AppLockActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Alias for HomeScreenActivity -->
+        <activity-alias
+            android:name=".ui.LauncherAliasHome"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.HomeScreenActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity
+            android:name=".ui.activity.DnsDetailActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.WelcomeActivity"
+            android:finishOnTaskLaunch="true"
+            android:noHistory="true" />
+        <activity
+            android:name=".ui.activity.AppInfoActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.PauseActivity"
+            android:launchMode="singleInstance" />
+        <activity
+            android:name=".ui.activity.DnsListActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.CustomRulesActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.ConfigureRethinkBasicActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.ProxySettingsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.MiscSettingsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.TunnelSettingsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.AppListActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.DetailedStatisticsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.NetworkLogsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.WgMainActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.WgConfigEditorActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.WgConfigDetailActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.CheckoutActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.TcpProxyMainActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.UniversalFirewallSettingsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.ConfigureOtherDnsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.AppWiseIpLogsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.AppWiseDomainLogsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity android:name=".ui.activity.ConsoleLogActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity android:name=".ui.activity.EventsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.NotificationHandlerActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/AppThemeDialog" />
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="screenOrientation" />
+        <activity
+            android:name=".ui.activity.AlertsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.AntiCensorshipActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.TestDialogActivity"
+            android:exported="false" />
+        <activity
+            android:name=".ui.activity.AdvancedSettingActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.DomainConnectionsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity android:name=".ui.activity.FragmentHostActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity android:name=".ui.activity.RpnWinProxyDetailsActivity"
+            android:finishOnTaskLaunch="true" />
+        <activity
+            android:name=".ui.activity.BubbleActivity"
+            android:allowEmbedded="true"
+            android:resizeableActivity="true"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="standard"/>
+
+        <receiver
+            android:name=".receiver.BraveAutoStartReceiver"
+            android:directBootAware="false"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.REBOOT" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            FIX #4 — VpnControlReceiver: require the VPN_CONTROL custom permission.
+
+            Senders must declare:
+                <uses-permission android:name="com.celzero.bravedns.permission.VPN_CONTROL" />
+            This is a normal-level permission (not signature), so automation apps like
+            Tasker can request it and the user grants it at install time.  It creates an
+            explicit, auditable permission contract visible in the app's manifest and in
+            tools like apktool, raising the bar above the previous "no permission" state.
+
+            In-code identity verification in VpnControlReceiver.kt provides a second
+            layer:  the spoofable "sender" string extra has been removed and replaced
+            with OS-verified identity on API 34+ (sentFromPackage / sentFromUid), with
+            signature verification as defence-in-depth on pre-API 34 devices.
+        -->
+        <receiver
+            android:name=".receiver.VpnControlReceiver"
+            android:exported="true"
+            android:permission="com.celzero.bravedns.permission.VPN_CONTROL"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="com.celzero.bravedns.intent.action.VPN_START" />
+                <action android:name="com.celzero.bravedns.intent.action.VPN_STOP" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.NotificationActionReceiver"
+            android:exported="false"
+            android:label="@string/app_name" />
+        <receiver android:name=".receiver.UserPresentReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".receiver.BubbleDismissReceiver"
+            android:exported="false" />
+
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+
+    </application>
+</manifest>
