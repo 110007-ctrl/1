@@ -12,7 +12,7 @@ object UsqueManager {
     const val SOCKS_HOST = "127.0.0.1"
     const val SOCKS_PORT = 40000
     private const val BINARY_NAME = "libusque.so"
-    private var process: Process? = null
+    @Volatile private var process: Process? = null
     // Prevents concurrent startSocksProxy calls from killing each other (restart storm).
     private val startLock = kotlinx.coroutines.sync.Mutex()
     @Volatile private var isStarting = false
@@ -184,7 +184,9 @@ object UsqueManager {
             val alive = probePort(ctx, SOCKS_PORT, timeoutMs = 5000)
             dlog(ctx, "startSocksProxy: alive=${proc.isAlive} portReady=$alive")
 
-            if (!alive) {
+            if (alive) {
+                portConfirmedAlive = true
+            } else {
                 // Process already exited — collect its output before reporting failure.
                 outThread.join(2000)
                 errThread.join(2000)
