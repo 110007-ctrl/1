@@ -6,9 +6,7 @@
         android:name="com.celzero.bravedns.CONTROL_VPN"
         android:protectionLevel="normal" />
 
-    <application
-        android:name=".RethinkDnsApplication"
-        android:networkSecurityConfig="@xml/network_security_config">
+    <application android:name=".RethinkDnsApplication">
         <provider
             android:name=".provider.ApplicationProvider"
             android:authorities="com.celzero.bravedns.appprovider"
