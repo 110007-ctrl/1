@@ -55,6 +55,16 @@
         android:description="@string/app_name"
         android:protectionLevel="normal" />
 
+    <!--
+        FILE_PROVIDER_ACCESS: signature-level permission used as android:readPermission
+        and android:writePermission on the FileProvider declaration below.
+        protectionLevel="signature" means only apps signed with the same certificate
+        (this app + instrumentation tests) can hold it — never user-grantable.
+    -->
+    <permission
+        android:name="${applicationId}.permission.FILE_PROVIDER_ACCESS"
+        android:protectionLevel="signature" />
+
     <!-- allowBackup/dataExtractionRules/fullBackupContent are set here to make the
          backup-configuration fix explicit in this flavor manifest so SAST scanners
          that analyse each manifest in isolation can verify the setting. The values
@@ -310,26 +320,12 @@
             It MUST be exported=false — FileProvider works exclusively through
             Intent.FLAG_GRANT_READ_URI_PERMISSION / FLAG_GRANT_WRITE_URI_PERMISSION
             which are granted per-URI per-recipient by the OS at the moment of sharing.
-            No broad read/write permission is needed because:
               • android:exported="false" — no app can query this provider directly.
-              • android:grantUriPermissions="true" — the caller grants temporary,
-                URI-scoped access when it calls FileProvider.getUriForFile() and
-                starts an Intent with FLAG_GRANT_READ_URI_PERMISSION.
-              • android:readPermission restricts any residual direct read access to
-                callers that hold the app's own signature-level permission, preventing
-                other apps from reading internal files even if they somehow obtain
-                the content:// URI out-of-band.
-              • android:writePermission set to the same signature permission ensures
-                no external app can push content into the provider's paths.
-
-            The custom permission declared below uses protectionLevel="signature" so
-            only apps signed with the same certificate (i.e. this app itself and
-            its instrumentation tests) can hold it — it is never user-grantable.
+              • android:grantUriPermissions="true" — enables per-URI temporary grants.
+              • android:readPermission / android:writePermission reference the
+                FILE_PROVIDER_ACCESS signature permission (declared at manifest level
+                above) so no external app can read or write provider paths directly.
         -->
-        <permission
-            android:name="${applicationId}.permission.FILE_PROVIDER_ACCESS"
-            android:protectionLevel="signature" />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider;${applicationId}.backup.BackupAgent"
