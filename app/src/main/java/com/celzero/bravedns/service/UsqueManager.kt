@@ -13,6 +13,9 @@ object UsqueManager {
     const val SOCKS_PORT = 40000
     private const val BINARY_NAME = "libusque.so"
     private var process: Process? = null
+    // Prevents concurrent startSocksProxy calls from killing each other (restart storm).
+    private val startLock = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var isStarting = false
 
     // ── debug log file ────────────────────────────────────────────────────────
     private fun dlog(ctx: Context, msg: String) {
@@ -115,9 +118,19 @@ object UsqueManager {
     }
 
     suspend fun startSocksProxy(ctx: Context): Boolean = withContext(Dispatchers.IO) {
+        // If already starting, wait for that attempt to finish and return its result.
+        if (isStarting) {
+            startLock.lock()
+            startLock.unlock()
+            return@withContext isRunning()
+        }
+        startLock.lock()
+        isStarting = true
+        try {
         // NOTE: do NOT clearDebugLog here — we need the prior register logs for debugging
         dlog(ctx, "startSocksProxy: >>>ENTRY<<<")
-        stopSocksProxy()
+        // Only stop if a process is currently running; don't touch it if already dead.
+        if (process?.isAlive == true) stopSocksProxy()
         try {
             val bin = getBinary(ctx)
             if (!bin.exists() || !bin.canExecute()) {
@@ -188,6 +201,10 @@ object UsqueManager {
             Logger.e(Logger.LOG_TAG_PROXY, "startSocksProxy exception", e)
             false
         }
+        } finally {
+            isStarting = false
+            startLock.unlock()
+        }
     }
 
     /** Poll 127.0.0.1:port until it accepts a connection or [timeoutMs] elapses. */
@@ -215,5 +232,5 @@ object UsqueManager {
         process = null
     }
 
-    fun isRunning(): Boolean = process?.isAlive == true
+    fun isRunning(): Boolean = isStarting || process?.isAlive == true
 }
