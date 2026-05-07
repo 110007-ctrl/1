@@ -27,6 +27,7 @@ import androidx.preference.PreferenceManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.celzero.bravedns.service.PersistentState
+import com.celzero.bravedns.service.UsqueManager
 import com.celzero.bravedns.util.Utilities
 import com.celzero.bravedns.util.Utilities.isAtleastO
 import org.koin.core.component.KoinComponent
@@ -122,6 +123,13 @@ class BugReportCollector(val context: Context, workerParameters: WorkerParameter
     private fun addToZip(file: File) {
         val dir = applicationContext.filesDir
         BugReportZipper.rezipAll(dir, file)
+
+        // Also include the warp/usque debug log if it exists
+        val warpLog = File(dir, "warp_debug.txt")
+        if (warpLog.exists() && warpLog.length() > 0L) {
+            BugReportZipper.rezipAll(dir, warpLog)
+        }
+
         BugReportZipper.deleteAll(dir)
     }
 

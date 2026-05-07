@@ -50,7 +50,7 @@ object UsqueManager {
     }
 
     suspend fun registerWithWarp(context: Context): Boolean = withContext(Dispatchers.IO) {
-        clearDebugLog(context)
+        // NOTE: do NOT clearDebugLog here — preserve prior logs across register/start calls
         dlog(context, "registerWithWarp: >>>ENTRY<<<")
         try {
             val bin = getBinary(context)
@@ -113,7 +113,7 @@ object UsqueManager {
     }
 
     suspend fun startSocksProxy(ctx: Context): Boolean = withContext(Dispatchers.IO) {
-        clearDebugLog(ctx)
+        // NOTE: do NOT clearDebugLog here — registration logs must survive into bugreport
         dlog(ctx, "startSocksProxy: >>>ENTRY<<<")
         stopSocksProxy()
         try {
@@ -164,23 +164,38 @@ object UsqueManager {
             }.also { it.isDaemon = true; it.start() }
 
             // Give the process time to either bind the port or crash.
-            Thread.sleep(1500)
+            // Port-probe: poll until SOCKS5 port accepts connections (up to 5s) instead of
+            // sleeping blindly — avoids false-negative on slow devices and speeds up success.
+            val deadline = System.currentTimeMillis() + 5_000L
+            var portOpen = false
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    java.net.Socket().use { s ->
+                        s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 300)
+                        portOpen = true
+                    }
+                    break
+                } catch (_: Exception) {
+                    Thread.sleep(200)
+                }
+            }
+            dlog(ctx, "startSocksProxy: portOpen=$portOpen after probe")
 
             val alive = proc.isAlive
-            dlog(ctx, "startSocksProxy: alive=$alive")
+            dlog(ctx, "startSocksProxy: alive=$alive portOpen=$portOpen")
 
-            if (!alive) {
-                // Process already exited — collect its output before reporting failure.
+            if (!alive || !portOpen) {
+                // Process exited OR port never opened — collect output before reporting failure.
                 outThread.join(2000)
                 errThread.join(2000)
                 val exit = try { proc.exitValue() } catch (_: Exception) { -1 }
                 dlog(ctx, "startSocksProxy: exit=$exit")
                 dlog(ctx, "startSocksProxy: stdout=${outputWriter}")
                 dlog(ctx, "startSocksProxy: stderr=${errorWriter}")
-                process = null
+                if (!alive) process = null
             }
 
-            alive
+            alive && portOpen
 
         } catch (e: Exception) {
             dlog(ctx, "startSocksProxy: EXCEPTION ${e.message}\n${e.stackTraceToString()}")
