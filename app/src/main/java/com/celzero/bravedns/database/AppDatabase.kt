@@ -1112,13 +1112,30 @@ abstract class AppDatabase : RoomDatabase() {
             tableName: String,
             columnToCheck: String
         ): Boolean {
-            try {
-                // Sanitize to prevent SQL injection via table name interpolation
+            // Two-step approach: first confirm the table exists via a fully parameterized
+            // sqlite_master query, then use PRAGMA table_info to enumerate columns.
+            // Neither step interpolates tableName into the SQL string.
+            return try {
+                val tableExists = db.query(
+                    "SELECT 1 FROM sqlite_master WHERE type=? AND name=?",
+                    arrayOf("table", tableName)
+                ).use { it.moveToFirst() }
+                if (!tableExists) return false
+
+                // safeTable is only used in PRAGMA (an identifier context, not a value
+                // context), after we have already verified it in sqlite_master.
                 val safeTable = tableName.replace(Regex("[^A-Za-z0-9_]"), "")
-                db.query("SELECT * FROM $safeTable LIMIT 0", emptyArray())
-                    .use { cursor -> return cursor.getColumnIndex(columnToCheck) != -1 }
+                db.query("PRAGMA table_info($safeTable)", emptyArray()).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val nameIdx = cursor.getColumnIndex("name")
+                        if (nameIdx >= 0 && cursor.getString(nameIdx) == columnToCheck) {
+                            return true
+                        }
+                    }
+                    false
+                }
             } catch (_: Exception) {
-                return false
+                false
             }
         }
     }

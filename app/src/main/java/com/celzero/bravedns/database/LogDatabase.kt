@@ -18,7 +18,6 @@ package com.celzero.bravedns.database
 import Logger
 import Logger.LOG_TAG_APP_DB
 import android.content.Context
-import android.database.Cursor
 import android.database.sqlite.SQLiteException
 import androidx.room.Database
 import androidx.room.Room
@@ -147,20 +146,15 @@ abstract class LogDatabase : RoomDatabase() {
         }
 
         private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean {
-            var cursor: Cursor? = null
-            // Sanitize: allow alphanumeric, underscore and dot (for schema.table notation)
-            val safeTable = table.replace(Regex("[^A-Za-z0-9_.]"), "")
+            // Fully parameterized: table name is passed as a bind value to sqlite_master,
+            // so it is never interpolated into a SQL string.
             return try {
-                cursor = db.query("SELECT * FROM $safeTable LIMIT 1")
-                cursor.moveToFirst()
-                // in the table if it exists, otherwise it will return -1
-                cursor.getInt(0) > 0
+                db.query(
+                    "SELECT 1 FROM sqlite_master WHERE type=? AND name=?",
+                    arrayOf("table", table)
+                ).use { cursor -> cursor.moveToFirst() }
             } catch (e: SQLiteException) {
-                // return false if the table does not exist
                 false
-            } finally {
-                // close the cursor
-                cursor?.close()
             }
         }
 
