@@ -90,6 +90,8 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
     private val eventLogger by inject<EventLogger>()
     private lateinit var animation: Animation
 
+    private var isWarpStarting = false
+
     companion object {
         private const val REFRESH_TIMEOUT: Long = 4000
         private const val ANIMATION_DURATION = 750L
@@ -155,6 +157,12 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
                 }
                 uiCtx { updateWarpUi() }
             }
+        } else {
+            // Always refresh the WARP switch on resume so the visual state stays
+            // consistent with the actual running state (fixes: switch looks off
+            // after navigating Home, and switch flickers during VPN restart).
+            // Skip if a start is already in progress to avoid a premature OFF flash.
+            if (!isWarpStarting) updateWarpUi()
         }
     }
 
@@ -405,6 +413,7 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
                 }
                 b.settingsActivityWarpSwitch.isEnabled = false
                 val warpProxyName = getString(R.string.warp_tunnel_title)
+                isWarpStarting = true
                 io {
                     val started = UsqueManager.startSocksProxy(this@ProxySettingsActivity)
                     if (started) {
@@ -428,6 +437,7 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
                         persistentState.usqueEnabled = true
                     }
                     uiCtx {
+                        isWarpStarting = false
                         if (started) {
                             updateWarpUi()
                         } else {
