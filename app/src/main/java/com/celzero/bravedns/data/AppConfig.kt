@@ -1257,7 +1257,10 @@ internal constructor(
     }
 
     suspend fun updateCustomSocks5Proxy(proxyEndpoint: ProxyEndpoint) {
-        proxyEndpointRepository.update(proxyEndpoint)
+        // Use insert(REPLACE) so the row is created if it doesn't exist yet.
+        // @Update silently does nothing when no row matches the primary key (id=-1 for WARP),
+        // causing the proxy to disappear from the DB on the next read → switch flips back off.
+        proxyEndpointRepository.insert(proxyEndpoint)
         customSocks5Endpoint = proxyEndpoint
         addProxy(ProxyType.SOCKS5, ProxyProvider.CUSTOM)
     }
