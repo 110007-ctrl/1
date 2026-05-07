@@ -126,6 +126,7 @@ object UsqueManager {
         }
         startLock.lock()
         isStarting = true
+        portConfirmedAlive = false
         try {
         // NOTE: do NOT clearDebugLog here — we need the prior register logs for debugging
         dlog(ctx, "startSocksProxy: >>>ENTRY<<<")
@@ -228,9 +229,32 @@ object UsqueManager {
 
     fun stopSocksProxy() {
         Log.d("WARP_DEBUG", "stopSocksProxy: isAlive=${process?.isAlive}")
+        portConfirmedAlive = false
         process?.destroy()
         process = null
     }
 
-    fun isRunning(): Boolean = isStarting || process?.isAlive == true
+    @Volatile private var portConfirmedAlive = false
+
+    fun isRunning(): Boolean = isStarting || process?.isAlive == true || portConfirmedAlive
+
+    /** Quick check (300ms) whether the SOCKS port is already accepting connections. */
+    fun isPortAlive(): Boolean {
+        return try {
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 300)
+                true
+            }
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * Called from onResume when usqueEnabled=true but process ref is lost.
+     * Sets portConfirmedAlive=true so isRunning() returns true and the UI shows ON.
+     * The flag is cleared whenever stopSocksProxy is called or a new startSocksProxy runs.
+     */
+    fun reattachIfPortAlive(ctx: Context) {
+        dlog(ctx, "reattachIfPortAlive: port alive, proxy running — restoring isRunning=true without restart")
+        portConfirmedAlive = true
+    }
 }

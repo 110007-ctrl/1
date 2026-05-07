@@ -149,17 +149,26 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
         // If WARP was enabled but the process died (app killed, VPN restarted),
         // attempt a silent restart so the switch shows the correct state.
         if (persistentState.usqueEnabled && !UsqueManager.isRunning()) {
-            // Detach listener FIRST — do NOT call updateWarpUi() before starting.
-            // updateWarpUi sets isChecked=false (isRunning=false) which re-fires the
-            // listener and launches a competing startSocksProxy (stack: updateWarpUi$1$1).
+            // Process reference lost (e.g. after navigation) — check if port is still alive
+            // before doing a full restart. If the proxy is already listening, just refresh UI.
             b.settingsActivityWarpSwitch.setOnCheckedChangeListener(null)
             b.settingsActivityWarpSwitch.isEnabled = false
             isWarpStarting = true
             io {
-                val ok = UsqueManager.startSocksProxy(this@ProxySettingsActivity)
-                if (!ok) {
-                    persistentState.usqueEnabled = false
-                    appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
+                // Fast port probe first (300ms timeout) — avoids unnecessary restart
+                val portAlive = UsqueManager.isPortAlive()
+                val ok = if (portAlive) {
+                    // Port is already listening; proxy is running, just lost the JVM reference.
+                    // Reattach it so isRunning() stays accurate.
+                    UsqueManager.reattachIfPortAlive(this@ProxySettingsActivity)
+                    true
+                } else {
+                    val started = UsqueManager.startSocksProxy(this@ProxySettingsActivity)
+                    if (!started) {
+                        persistentState.usqueEnabled = false
+                        appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
+                    }
+                    started
                 }
                 uiCtx {
                     isWarpStarting = false
@@ -168,9 +177,7 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
             }
         } else {
             // Always refresh the WARP switch on resume so the visual state stays
-            // consistent with the actual running state (fixes: switch looks off
-            // after navigating Home, and switch flickers during VPN restart).
-            // Skip if a start is already in progress to avoid a premature OFF flash.
+            // consistent with the actual running state.
             if (!isWarpStarting) updateWarpUi()
         }
     }
