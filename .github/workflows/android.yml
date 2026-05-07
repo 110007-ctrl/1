@@ -50,15 +50,22 @@ jobs:
         max_attempts: 3
         command: ./gradlew ${{ env.VARIANT }} --info --warning-mode all --no-configuration-cache
 
-    - name: 🔍 Find APK
-      run: find app/build/outputs/apk/ -name "app-fdroid-full-universal-debug.apk"
+    - name: 🔍 Find Universal APK
+      run: |
+        echo "All APKs found:"
+        find app/build/outputs/apk/ -name "*.apk"
+        echo ""
+        echo "Universal APK:"
+        find app/build/outputs/apk/ -name "*universal*.apk"
+        UNIVERSAL_APK=$(find app/build/outputs/apk/ -name "*universal*.apk" | head -1)
+        echo "UNIVERSAL_APK=$UNIVERSAL_APK" >> $GITHUB_ENV
 
     - name: 📦 Upload APK
-      if: success()
+      if: success() && env.UNIVERSAL_APK != ''
       uses: actions/upload-artifact@v4
       with:
         name: rethink-dns-apk
-        path: app/build/outputs/apk/fdroid/full/universal/debug/app-fdroid-full-universal-debug.apk
+        path: ${{ env.UNIVERSAL_APK }}
 
     - name: 📜 Upload Crashlytics Mapping File
       # Only upload mapping files if we built the release/website variant
