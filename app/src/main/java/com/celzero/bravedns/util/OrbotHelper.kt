@@ -108,11 +108,6 @@ class OrbotHelper(
         // Orbot requestCode for PendingIntent.getBroadcast() for the notification action.
         private const val ORBOT_REQUEST_CODE = 200
 
-        // Permission required to receive broadcasts sent to Orbot, limiting visibility to
-        // only apps that hold this permission (defence-in-depth on top of setPackage()).
-        private const val ORBOT_BROADCAST_PERMISSION =
-            "org.torproject.android.permission.USE_ORBOT"
-
         var selectedProxyType: String = AppConfig.ProxyType.NONE.name
 
         const val NOTIF_CHANNEL_ID_PROXY_ALERTS = "PROXY_ALERTS"
@@ -202,7 +197,7 @@ class OrbotHelper(
             IntentFilter(ACTION_STATUS),
             ContextCompat.RECEIVER_EXPORTED
         )
-        context.sendBroadcast(intent, ORBOT_BROADCAST_PERMISSION)
+        context.sendBroadcast(intent)
         waitForOrbot()
         Logger.d(LOG_TAG_VPN, "request orbot start by broadcast")
     }
@@ -271,7 +266,7 @@ class OrbotHelper(
         selectedProxyType = AppConfig.ProxyType.NONE.name
         appConfig.removeAllProxies()
         persistentState.orbotConnectionStatus.postValue(false)
-        context.sendBroadcast(getOrbotStopIntent(), ORBOT_BROADCAST_PERMISSION)
+        context.sendBroadcast(getOrbotStopIntent())
         Logger.i(LOG_TAG_VPN, "stop orbot, remove from proxy")
     }
 

@@ -1113,9 +1113,7 @@ abstract class AppDatabase : RoomDatabase() {
             columnToCheck: String
         ): Boolean {
             try {
-                // Sanitize to prevent SQL injection via table name interpolation
-                val safeTable = tableName.replace(Regex("[^A-Za-z0-9_]"), "")
-                db.query("SELECT * FROM $safeTable LIMIT 0", emptyArray())
+                db.query("SELECT * FROM $tableName LIMIT 0", emptyArray())
                     .use { cursor -> return cursor.getColumnIndex(columnToCheck) != -1 }
             } catch (_: Exception) {
                 return false

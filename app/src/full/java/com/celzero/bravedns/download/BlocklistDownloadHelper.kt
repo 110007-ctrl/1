@@ -91,7 +91,7 @@ class BlocklistDownloadHelper {
                 } else {
                     Constants.ONDEVICE_BLOCKLIST_DOWNLOAD_PATH
                 }
-            val dir = File(context.filesDir.toString() + path + timestamp)
+            val dir = File(context.getExternalFilesDir(null).toString() + path + timestamp)
             logd("deleteOldFiles, File : ${dir.path}, ${dir.isDirectory}")
             deleteRecursive(dir)
         }
@@ -111,7 +111,7 @@ class BlocklistDownloadHelper {
         }
 
         fun getExternalFilePath(context: Context, timestamp: String): String {
-            return context.filesDir.toString() +
+            return context.getExternalFilesDir(null).toString() +
                 Constants.ONDEVICE_BLOCKLIST_DOWNLOAD_PATH +
                 File.separator +
                 timestamp +
