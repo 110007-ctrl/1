@@ -224,12 +224,19 @@
             android:taskAffinity=""
             android:launchMode="standard"/>
 
+        <!--
+            ExportedReceiver suppressed: BraveAutoStartReceiver MUST be exported so the
+            Android system can deliver BOOT_COMPLETED / USER_UNLOCKED broadcasts.
+            The android:permission attribute restricts delivery to the OS itself
+            (protectionLevel="signature|privileged"), so no third-party app can trigger it.
+        -->
         <receiver
             android:name=".receiver.BraveAutoStartReceiver"
             android:directBootAware="false"
             android:exported="true"
             android:label="@string/app_name"
-            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED"
+            tools:ignore="ExportedReceiver">
             <intent-filter android:priority="999">
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.REBOOT" />
@@ -257,7 +264,8 @@
             android:name=".receiver.VpnControlReceiver"
             android:exported="true"
             android:permission="com.celzero.bravedns.permission.VPN_CONTROL"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            tools:ignore="ExportedReceiver">
             <intent-filter>
                 <action android:name="com.celzero.bravedns.intent.action.VPN_START" />
                 <action android:name="com.celzero.bravedns.intent.action.VPN_STOP" />
