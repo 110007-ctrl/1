@@ -98,9 +98,27 @@
             audited or updated for pointer-tag safety this attribute stays false to
             avoid crashes.  Track in a follow-up issue.
     -->
+    <!--
+        FIX — Improper android backup configuration.
+
+        android:allowBackup="false" disables Auto Backup entirely on Android 6–11.
+        android:fullBackupContent points to backup_rules.xml (Android 6–11) which
+        explicitly excludes all sensitive data domains as defence-in-depth.
+        android:dataExtractionRules points to data_extraction_rules.xml (Android 12+)
+        which excludes cloud backup and device-to-device transfers, and sets
+        disableIfNoEncryptionCapabilities="true" so no backup runs on devices that
+        cannot guarantee end-to-end encryption.
+
+        RethinkDNS holds VPN/WireGuard private keys, DNS-over-HTTPS/TLS credentials,
+        and blocklist configs in SharedPreferences and internal storage.  Leaking
+        this data via Auto Backup to Google Drive or a device transfer would expose
+        cryptographic key material.
+    -->
     <application
         android:name=".RethinkDnsApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:largeHeap="true"
