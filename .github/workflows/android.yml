@@ -51,14 +51,14 @@ jobs:
         command: ./gradlew ${{ env.VARIANT }} --info --warning-mode all --no-configuration-cache
 
     - name: 🔍 Find APK
-      run: find app/build/outputs/apk/ -name "*.apk"
+      run: find app/build/outputs/apk/ -name "app-fdroid-full-universal-debug.apk"
 
     - name: 📦 Upload APK
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: rethink-dns-apk
-        path: app/build/outputs/apk/**/*.apk
+        path: app/build/outputs/apk/fdroid/full/universal/debug/app-fdroid-full-universal-debug.apk
 
     - name: 📜 Upload Crashlytics Mapping File
       # Only upload mapping files if we built the release/website variant

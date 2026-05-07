@@ -143,6 +143,10 @@ class BugReportFilesBottomSheet : BottomSheetDialogFragment() {
             b.brbsSelectAllCheckbox.toggle()
         }
 
+        b.brbsSaveButton.setOnClickListener {
+            saveToFiles()
+        }
+
         b.brbsSendButton.setOnClickListener {
             sendBugReport()
         }
@@ -273,7 +277,132 @@ class BugReportFilesBottomSheet : BottomSheetDialogFragment() {
         val hasSelection = bugReportFiles.any { it.isSelected }
         b.brbsSendButton.isEnabled = hasSelection
         b.brbsSendButton.alpha = if (hasSelection) ALPHA_ENABLED else ALPHA_DISABLED
+        b.brbsSaveButton.isEnabled = hasSelection
+        b.brbsSaveButton.alpha = if (hasSelection) ALPHA_ENABLED else ALPHA_DISABLED
     }
+
+    private fun saveToFiles() {
+        val selectedFiles = bugReportFiles.filter { it.isSelected }.map { it.file }
+
+        if (selectedFiles.isEmpty()) {
+            showToastUiCentered(
+                requireContext(),
+                getString(R.string.bug_report_no_files_selected),
+                Toast.LENGTH_SHORT
+            )
+            return
+        }
+
+        b.brbsProgressLayout.visibility = View.VISIBLE
+        b.brbsProgressText.text = getString(R.string.bug_report_saving_files)
+        b.brbsSaveButton.isEnabled = false
+        b.brbsSendButton.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                val savedName = withContext(Dispatchers.IO) {
+                    val fileToSave = if (selectedFiles.size == 1) {
+                        selectedFiles[0]
+                    } else {
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                        val zipFile = File(requireContext().cacheDir, "rethinkdns_bugreport_$timestamp.zip")
+                        ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                            val addedEntries = mutableSetOf<String>()
+                            selectedFiles.forEach { file ->
+                                if (file.extension == "zip") {
+                                    ZipFile(file).use { zf ->
+                                        val entries = zf.entries()
+                                        while (entries.hasMoreElements()) {
+                                            val entry = entries.nextElement()
+                                            if (!entry.isDirectory && !addedEntries.contains(entry.name)) {
+                                                addedEntries.add(entry.name)
+                                                zos.putNextEntry(ZipEntry(entry.name))
+                                                zf.getInputStream(entry).use { it.copyTo(zos) }
+                                                zos.closeEntry()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (!addedEntries.contains(file.name)) {
+                                        addedEntries.add(file.name)
+                                        zos.putNextEntry(ZipEntry(file.name))
+                                        FileInputStream(file).use { it.copyTo(zos) }
+                                        zos.closeEntry()
+                                    }
+                                }
+                            }
+                        }
+                        zipFile
+                    }
+                    saveFileToDownloads(fileToSave)
+                }
+
+                if (savedName != null) {
+                    showToastUiCentered(
+                        requireContext(),
+                        getString(R.string.bug_report_saved_to_downloads, savedName),
+                        Toast.LENGTH_LONG
+                    )
+                    dismiss()
+                } else {
+                    showToastUiCentered(
+                        requireContext(),
+                        getString(R.string.bug_report_save_failed),
+                        Toast.LENGTH_SHORT
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.e(LOG_TAG_UI, "err saving bug report to files: ${e.message}", e)
+                showToastUiCentered(
+                    requireContext(),
+                    getString(R.string.bug_report_save_failed),
+                    Toast.LENGTH_SHORT
+                )
+            } finally {
+                b.brbsProgressLayout.visibility = View.GONE
+                updateSendButtonState()
+            }
+        }
+    }
+
+    private fun saveFileToDownloads(file: File): String? {
+        return try {
+            if (isAtleastQ()) {
+                val resolver = requireContext().contentResolver
+                val contentValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, file.name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE,
+                        if (file.extension == "zip") "application/zip" else "text/plain")
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val collection = android.provider.MediaStore.Downloads.getContentUri(
+                    android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY
+                )
+                val itemUri = resolver.insert(collection, contentValues) ?: return null
+                resolver.openOutputStream(itemUri)?.use { out ->
+                    FileInputStream(file).use { it.copyTo(out) }
+                }
+                contentValues.clear()
+                contentValues.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(itemUri, contentValues, null, null)
+                file.name
+            } else {
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS
+                )
+                downloadsDir.mkdirs()
+                val dest = File(downloadsDir, file.name)
+                FileInputStream(file).use { input ->
+                    FileOutputStream(dest).use { input.copyTo(it) }
+                }
+                file.name
+            }
+        } catch (e: Exception) {
+            Logger.e(LOG_TAG_UI, "err saving to downloads: ${e.message}", e)
+            null
+        }
+    }
+
 
     private fun sendBugReport() {
         val selectedFiles = bugReportFiles.filter { it.isSelected }.map { it.file }
