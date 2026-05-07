@@ -631,9 +631,6 @@ class AboutFragment : Fragment(R.layout.fragment_about), View.OnClickListener, K
     }
 
     private fun getDatabaseTables(): List<String> {
-        val db = appDatabase.openHelper.readableDatabase
-        val cursor =
-            db.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         val tablesToSkip = setOf(
             "android_metadata",
             "sqlite_sequence",
@@ -643,30 +640,36 @@ class AboutFragment : Fragment(R.layout.fragment_about), View.OnClickListener, K
             "SubscriptionStatus",
             "SubscriptionStateHistory"
         )
-        val tables = mutableListOf<String>()
-        cursor.use {
-            while (it.moveToNext()) {
-                val name = it.getString(0)
-                if (!tablesToSkip.contains(name)) tables.add(name)
-            }
-        }
-        return tables
+        // fetchAllowedTableNames() uses a fully parameterized query, so no SQL injection risk.
+        return fetchAllowedTableNames()
+            .filter { it !in tablesToSkip }
+            .sorted()
     }
 
     /**
-     * Validates that a table name contains only alphanumeric chars and underscores,
-     * preventing SQL injection via string interpolation in raw queries.
+     * Returns the set of real table names that exist in the database, fetched via a
+     * parameterized query against sqlite_master.  Using this as an allowlist means we
+     * never interpolate an untrusted string into a SQL statement.
      */
-    private fun sanitizeTableName(name: String): String {
-        require(name.matches(Regex("[A-Za-z0-9_]+"))) { "Invalid table name: $name" }
-        return name
+    private fun fetchAllowedTableNames(): Set<String> {
+        val db = appDatabase.openHelper.readableDatabase
+        val allowed = mutableSetOf<String>()
+        // Bind the literal 'table' as a parameter so the query itself has no dynamic parts.
+        db.query("SELECT name FROM sqlite_master WHERE type=? AND name NOT LIKE 'sqlite_%'",
+            arrayOf("table")).use { c ->
+            while (c.moveToNext()) allowed.add(c.getString(0))
+        }
+        return allowed
     }
 
     private fun buildTableDump(table: String): String {
         val db = appDatabase.openHelper.readableDatabase
         val sb = StringBuilder()
         return try {
-            val safeTable = sanitizeTableName(table)
+            // Validate against the live allowlist – never interpolate an untrusted string.
+            val allowedTables = fetchAllowedTableNames()
+            require(table in allowedTables) { "Unknown table: $table" }
+            val safeTable = table   // safe: confirmed to exist in sqlite_master
             val pragma = db.query("PRAGMA table_info($safeTable)")
             val columns = mutableListOf<String>()
             pragma.use { p ->
