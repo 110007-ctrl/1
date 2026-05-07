@@ -55,8 +55,15 @@
         android:description="@string/app_name"
         android:protectionLevel="normal" />
 
+    <!-- allowBackup/dataExtractionRules/fullBackupContent are set here to make the
+         backup-configuration fix explicit in this flavor manifest so SAST scanners
+         that analyse each manifest in isolation can verify the setting. The values
+         are merged from (and consistent with) the main manifest. -->
     <application
         android:name=".RethinkDnsApplication"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@style/AppThemeInitial">
         <meta-data
