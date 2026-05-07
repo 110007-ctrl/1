@@ -122,6 +122,11 @@ class BugReportCollector(val context: Context, workerParameters: WorkerParameter
     private fun addToZip(file: File) {
         val dir = applicationContext.filesDir
         BugReportZipper.rezipAll(dir, file)
+        // Also include warp_debug.txt so WARP failures are visible in the bugreport
+        val warpLog = File(applicationContext.filesDir, "warp_debug.txt")
+        if (warpLog.exists() && warpLog.length() > 0) {
+            BugReportZipper.rezipAll(dir, warpLog)
+        }
         BugReportZipper.deleteAll(dir)
     }
 

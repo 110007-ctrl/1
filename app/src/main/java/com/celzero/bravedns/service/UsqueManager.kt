@@ -22,6 +22,8 @@ object UsqueManager {
         } catch (_: Exception) {}
     }
 
+    fun getDebugLogFile(ctx: Context): File = File(ctx.filesDir, "warp_debug.txt")
+
     fun readDebugLog(ctx: Context): String {
         return try {
             val f = File(ctx.filesDir, "warp_debug.txt")
@@ -50,7 +52,7 @@ object UsqueManager {
     }
 
     suspend fun registerWithWarp(context: Context): Boolean = withContext(Dispatchers.IO) {
-        clearDebugLog(context)
+        // NOTE: do NOT call clearDebugLog here — logs must persist across register→start sequence
         dlog(context, "registerWithWarp: >>>ENTRY<<<")
         try {
             val bin = getBinary(context)
@@ -113,7 +115,7 @@ object UsqueManager {
     }
 
     suspend fun startSocksProxy(ctx: Context): Boolean = withContext(Dispatchers.IO) {
-        clearDebugLog(ctx)
+        // NOTE: do NOT clearDebugLog here — we need the prior register logs for debugging
         dlog(ctx, "startSocksProxy: >>>ENTRY<<<")
         stopSocksProxy()
         try {
@@ -163,11 +165,10 @@ object UsqueManager {
                 try { errorWriter.write(proc.errorStream.bufferedReader().readText()) } catch (_: Exception) {}
             }.also { it.isDaemon = true; it.start() }
 
-            // Give the process time to either bind the port or crash.
-            Thread.sleep(1500)
-
-            val alive = proc.isAlive
-            dlog(ctx, "startSocksProxy: alive=$alive")
+            // Wait for the port to actually be listening (up to 5s) instead of a blind sleep.
+            // This prevents a race on slow devices where 1500ms wasn't enough.
+            val alive = probePort(ctx, SOCKS_PORT, timeoutMs = 5000)
+            dlog(ctx, "startSocksProxy: alive=${proc.isAlive} portReady=$alive")
 
             if (!alive) {
                 // Process already exited — collect its output before reporting failure.
@@ -187,6 +188,25 @@ object UsqueManager {
             Logger.e(Logger.LOG_TAG_PROXY, "startSocksProxy exception", e)
             false
         }
+    }
+
+    /** Poll 127.0.0.1:port until it accepts a connection or [timeoutMs] elapses. */
+    private fun probePort(ctx: Context, port: Int, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+        while (System.currentTimeMillis() < deadline) {
+            attempt++
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress("127.0.0.1", port), 300)
+                    dlog(ctx, "probePort: port $port ready after ${attempt} attempts")
+                    return true
+                }
+            } catch (_: Exception) {}
+            Thread.sleep(200)
+        }
+        dlog(ctx, "probePort: port $port NOT ready after ${timeoutMs}ms / ${attempt} attempts")
+        return false
     }
 
     fun stopSocksProxy() {
