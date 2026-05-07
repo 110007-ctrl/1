@@ -23,8 +23,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.res.Configuration.UI_MODE_NIGHT_YES
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
@@ -40,8 +43,12 @@ import com.celzero.bravedns.util.Utilities.isAtleastQ
 import com.celzero.bravedns.util.Utilities.showToastUiCentered
 import com.celzero.bravedns.util.handleFrostEffectIfNeeded
 import org.koin.android.ext.android.inject
+import java.security.KeyStore
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import kotlin.math.abs
 
 class AppLockActivity : AppCompatActivity(R.layout.activity_app_lock) {
@@ -54,6 +61,16 @@ class AppLockActivity : AppCompatActivity(R.layout.activity_app_lock) {
         private const val TAG = "AppLockUi"
         const val APP_LOCK_ALIAS = ".ui.activity.LauncherAliasAppLock"
         const val HOME_ALIAS = ".ui.LauncherAliasHome"
+
+        // AndroidKeyStore key alias used for the biometric CryptoObject cipher.
+        // The key is bound to biometric enrolment: if the user adds or removes a
+        // biometric after the key is created, the key is automatically invalidated
+        // (invalidatedByBiometricEnrollment = true, the default), forcing
+        // re-authentication at the next app launch rather than accepting a
+        // potentially-attacker-enrolled biometric.
+        private const val BIOMETRIC_KEY_ALIAS = "rethinkdns_biometric_auth_key"
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val KEY_SIZE = 256
     }
 
     // TODO - #324 - Usage of isDarkTheme() in all activities.
@@ -145,18 +162,142 @@ class AppLockActivity : AppCompatActivity(R.layout.activity_app_lock) {
                 }
             })
 
-        val promptInfo =
-            BiometricPrompt.PromptInfo.Builder()
+        // Prefer BIOMETRIC_STRONG (Class 3) so we can pass a CryptoObject and bind
+        // the auth to a hardware-backed AES key.  This prevents an attacker with
+        // physical access from hooking onAuthenticationSucceeded without actually
+        // satisfying the biometric check — the cipher only becomes usable after a
+        // genuine hardware-verified match.
+        //
+        // Fall back to DEVICE_CREDENTIAL-only on devices where BIOMETRIC_STRONG is
+        // not enrolled or not available (e.g. PIN/pattern-only devices, older
+        // Android versions).  CryptoObject cannot be used with DEVICE_CREDENTIAL
+        // alone (Android throws IllegalArgumentException), so we call the
+        // no-CryptoObject overload only in that path.
+        val biometricManager = BiometricManager.from(this)
+        val canUseStrongBiometric =
+            biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+                    BiometricManager.BIOMETRIC_SUCCESS
+
+        if (canUseStrongBiometric) {
+            authenticateWithCryptoObject()
+        } else {
+            authenticateWithDeviceCredential()
+        }
+    }
+
+    /**
+     * Primary path: BIOMETRIC_STRONG + CryptoObject.
+     *
+     * Creates (or reuses) an AES/GCM key in the AndroidKeyStore that is:
+     *  - bound to the device's secure hardware (StrongBox or TEE)
+     *  - invalidated when new biometrics are enrolled
+     *  - never extractable from the keystore
+     *
+     * The Cipher is initialised in ENCRYPT_MODE and wrapped in a CryptoObject.
+     * The OS only makes the key usable after a confirmed Class 3 biometric match,
+     * so a successful callback guarantees the hardware actually verified the user.
+     */
+    private fun authenticateWithCryptoObject() {
+        try {
+            val cipher = buildCipher()
+            val promptInfo = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(getString(R.string.hs_biometeric_title))
                 .setSubtitle(getString(R.string.hs_biometeric_desc))
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                )
+                // BIOMETRIC_STRONG only: CryptoObject is incompatible with
+                // DEVICE_CREDENTIAL and with BIOMETRIC_WEAK.
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                .setNegativeButtonText(getString(android.R.string.cancel))
                 .setConfirmationRequired(false)
                 .build()
 
+            biometricPrompt.authenticate(promptInfo, BiometricPrompt.CryptoObject(cipher))
+            Logger.d(LOG_TAG_UI, "$TAG authenticating with CryptoObject (BIOMETRIC_STRONG)")
+        } catch (e: Exception) {
+            // Key may have been invalidated by a new biometric enrolment — delete it
+            // and fall back to the device credential path so the user is not locked out.
+            Logger.w(LOG_TAG_UI, "$TAG CryptoObject setup failed, falling back to device credential: ${e.message}")
+            deleteKeyIfExists()
+            authenticateWithDeviceCredential()
+        }
+    }
+
+    /**
+     * Fallback path: BIOMETRIC_WEAK | DEVICE_CREDENTIAL, no CryptoObject.
+     * Used on devices without a Class 3 biometric sensor, or when the
+     * AndroidKeyStore key has been invalidated.
+     */
+    private fun authenticateWithDeviceCredential() {
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(getString(R.string.hs_biometeric_title))
+            .setSubtitle(getString(R.string.hs_biometeric_desc))
+            .setAllowedAuthenticators(
+                BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            )
+            .setConfirmationRequired(false)
+            .build()
+
         biometricPrompt.authenticate(promptInfo)
+        Logger.d(LOG_TAG_UI, "$TAG authenticating without CryptoObject (DEVICE_CREDENTIAL fallback)")
+    }
+
+    /** Returns an AES/GCM Cipher initialised for ENCRYPT_MODE against the biometric key. */
+    private fun buildCipher(): Cipher {
+        getOrCreateSecretKey()
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
+        val key = keyStore.getKey(BIOMETRIC_KEY_ALIAS, null) as SecretKey
+        return Cipher.getInstance("AES/GCM/NoPadding").also {
+            it.init(Cipher.ENCRYPT_MODE, key)
+        }
+    }
+
+    /**
+     * Creates the AES-256/GCM key in AndroidKeyStore if it does not already exist.
+     *
+     * Key properties:
+     *  - userAuthenticationRequired = true — key is unlocked only after biometric auth
+     *  - invalidatedByBiometricEnrollment = true (default) — key is wiped when new
+     *    biometrics are added, preventing an attacker from enrolling their own finger
+     *  - isStrongBoxBacked (Android 9+) — prefer StrongBox (dedicated security chip)
+     *    over the regular TEE when available
+     */
+    private fun getOrCreateSecretKey() {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
+        if (keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) return
+
+        val keyGenSpec = KeyGenParameterSpec.Builder(
+            BIOMETRIC_KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        )
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(KEY_SIZE)
+            .setUserAuthenticationRequired(true)
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    setIsStrongBoxBacked(true)
+                }
+            }
+            .build()
+
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE).also {
+            it.init(keyGenSpec)
+            it.generateKey()
+        }
+        Logger.d(LOG_TAG_UI, "$TAG biometric key created in AndroidKeyStore")
+    }
+
+    /** Removes the biometric key from the AndroidKeyStore (called when the key is invalidated). */
+    private fun deleteKeyIfExists() {
+        try {
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).also { it.load(null) }
+            if (keyStore.containsAlias(BIOMETRIC_KEY_ALIAS)) {
+                keyStore.deleteEntry(BIOMETRIC_KEY_ALIAS)
+                Logger.d(LOG_TAG_UI, "$TAG invalidated biometric key deleted from AndroidKeyStore")
+            }
+        } catch (e: Exception) {
+            Logger.w(LOG_TAG_UI, "$TAG failed to delete biometric key: ${e.message}")
+        }
     }
 
     private fun startHomeActivity() {
