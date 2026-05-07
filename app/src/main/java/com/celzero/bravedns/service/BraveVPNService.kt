@@ -2199,6 +2199,14 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         }
 
         // should not be called in normal circumstances, but just in case...
+        // If vpnAdapter is null the tunnel is still being set up (e.g. network-change
+        // event arrives before onStartCommand has finished). Stopping the service here
+        // causes the home-screen button to flash Start → Stop. Skip instead; the
+        // startup path will call restartVpn and wire everything up.
+        if (vpnAdapter == null) {
+            Logger.w(LOG_TAG_VPN, "updateTun: vpnAdapter not ready yet, skipping (startup race)")
+            return
+        }
         val ok = vpnAdapter?.updateTun(tunnelOptions) ?: false
         // TODO: like Intra, call VpnController#stop instead? see
         // VpnController#onStartComplete

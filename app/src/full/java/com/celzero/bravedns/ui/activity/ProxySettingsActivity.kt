@@ -149,13 +149,22 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
         // If WARP was enabled but the process died (app killed, VPN restarted),
         // attempt a silent restart so the switch shows the correct state.
         if (persistentState.usqueEnabled && !UsqueManager.isRunning()) {
+            // Detach listener FIRST — do NOT call updateWarpUi() before starting.
+            // updateWarpUi sets isChecked=false (isRunning=false) which re-fires the
+            // listener and launches a competing startSocksProxy (stack: updateWarpUi$1$1).
+            b.settingsActivityWarpSwitch.setOnCheckedChangeListener(null)
+            b.settingsActivityWarpSwitch.isEnabled = false
+            isWarpStarting = true
             io {
                 val ok = UsqueManager.startSocksProxy(this@ProxySettingsActivity)
                 if (!ok) {
                     persistentState.usqueEnabled = false
                     appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
                 }
-                uiCtx { updateWarpUi() }
+                uiCtx {
+                    isWarpStarting = false
+                    updateWarpUi()
+                }
             }
         } else {
             // Always refresh the WARP switch on resume so the visual state stays
