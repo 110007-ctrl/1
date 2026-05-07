@@ -148,8 +148,10 @@ abstract class LogDatabase : RoomDatabase() {
 
         private fun tableExists(db: SupportSQLiteDatabase, table: String): Boolean {
             var cursor: Cursor? = null
+            // Sanitize: allow alphanumeric, underscore and dot (for schema.table notation)
+            val safeTable = table.replace(Regex("[^A-Za-z0-9_.]"), "")
             return try {
-                cursor = db.query("SELECT * FROM $table LIMIT 1")
+                cursor = db.query("SELECT * FROM $safeTable LIMIT 1")
                 cursor.moveToFirst()
                 // in the table if it exists, otherwise it will return -1
                 cursor.getInt(0) > 0
