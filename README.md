@@ -1,7 +1,4 @@
-<img width="1774" height="887" alt="17772493849654895373663611588081" src="https://github.com/user-attachments/assets/41897c4d-c83e-4fd7-b947-5f0aa7cc4b5c" />
-
-
-## Rethink DNS  THE CLOUDFLARE MASQUE FORK + Firewall + VPN for Android ( Added Cloudflare Warp Masque VPN Support) (20-APR-2026)
+Rethink DNS  THE CLOUDFLARE MASQUE FORK + Firewall + VPN for Android ( Added Cloudflare Warp Masque VPN Support) (20-APR-2026)
 
 Rethink DNS + Firewall + VPN for Android ( Added Cloudflare Warp Masque VPN Support) (20-APR-2026
 
