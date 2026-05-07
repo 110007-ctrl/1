@@ -653,11 +653,21 @@ class AboutFragment : Fragment(R.layout.fragment_about), View.OnClickListener, K
         return tables
     }
 
+    /**
+     * Validates that a table name contains only alphanumeric chars and underscores,
+     * preventing SQL injection via string interpolation in raw queries.
+     */
+    private fun sanitizeTableName(name: String): String {
+        require(name.matches(Regex("[A-Za-z0-9_]+"))) { "Invalid table name: $name" }
+        return name
+    }
+
     private fun buildTableDump(table: String): String {
         val db = appDatabase.openHelper.readableDatabase
         val sb = StringBuilder()
         return try {
-            val pragma = db.query("PRAGMA table_info($table)")
+            val safeTable = sanitizeTableName(table)
+            val pragma = db.query("PRAGMA table_info($safeTable)")
             val columns = mutableListOf<String>()
             pragma.use { p ->
                 while (p.moveToNext()) {
@@ -667,7 +677,7 @@ class AboutFragment : Fragment(R.layout.fragment_about), View.OnClickListener, K
             }
             sb.append(columns.joinToString(" | ")).append('\n')
             val maxRowsPerTable = 500
-            val dataCursor = db.query("SELECT * FROM $table LIMIT $maxRowsPerTable")
+            val dataCursor = db.query("SELECT * FROM $safeTable LIMIT $maxRowsPerTable")
             var rowCount = 0
             dataCursor.use { dc ->
                 while (dc.moveToNext()) {
@@ -706,7 +716,7 @@ class AboutFragment : Fragment(R.layout.fragment_about), View.OnClickListener, K
                     rowCount++
                 }
             }
-            val countCursor = db.query("SELECT COUNT(1) FROM $table")
+            val countCursor = db.query("SELECT COUNT(1) FROM $safeTable")
             var total = rowCount
             countCursor.use { cc -> if (cc.moveToFirst()) total = cc.getInt(0) }
             if (total > rowCount) {
