@@ -302,5 +302,45 @@
                 android:value="true" />
         </service>
 
+        <!--
+            FIX — Android app content provider should specify precise permissions.
+
+            FileProvider is used to share bug-report ZIPs and exported backup files
+            with external apps (e.g. email clients, file managers) via content:// URIs.
+            It MUST be exported=false — FileProvider works exclusively through
+            Intent.FLAG_GRANT_READ_URI_PERMISSION / FLAG_GRANT_WRITE_URI_PERMISSION
+            which are granted per-URI per-recipient by the OS at the moment of sharing.
+            No broad read/write permission is needed because:
+              • android:exported="false" — no app can query this provider directly.
+              • android:grantUriPermissions="true" — the caller grants temporary,
+                URI-scoped access when it calls FileProvider.getUriForFile() and
+                starts an Intent with FLAG_GRANT_READ_URI_PERMISSION.
+              • android:readPermission restricts any residual direct read access to
+                callers that hold the app's own signature-level permission, preventing
+                other apps from reading internal files even if they somehow obtain
+                the content:// URI out-of-band.
+              • android:writePermission set to the same signature permission ensures
+                no external app can push content into the provider's paths.
+
+            The custom permission declared below uses protectionLevel="signature" so
+            only apps signed with the same certificate (i.e. this app itself and
+            its instrumentation tests) can hold it — it is never user-grantable.
+        -->
+        <permission
+            android:name="${applicationId}.permission.FILE_PROVIDER_ACCESS"
+            android:protectionLevel="signature" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider;${applicationId}.backup.BackupAgent"
+            android:exported="false"
+            android:grantUriPermissions="true"
+            android:readPermission="${applicationId}.permission.FILE_PROVIDER_ACCESS"
+            android:writePermission="${applicationId}.permission.FILE_PROVIDER_ACCESS">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_provider_paths" />
+        </provider>
+
     </application>
 </manifest>
