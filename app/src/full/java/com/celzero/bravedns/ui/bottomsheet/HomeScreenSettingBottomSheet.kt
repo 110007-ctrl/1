@@ -36,7 +36,6 @@ import com.celzero.bravedns.service.VpnController
 import com.celzero.bravedns.ui.activity.ProxySettingsActivity
 import com.celzero.bravedns.ui.activity.WgMainActivity
 import com.celzero.bravedns.util.Constants.Companion.INIT_TIME_MS
-import com.celzero.bravedns.util.SsidPermissionManager
 import com.celzero.bravedns.util.Themes.Companion.getBottomsheetCurrentTheme
 import com.celzero.bravedns.util.UIUtils.htmlToSpannedText
 import com.celzero.bravedns.util.UIUtils.openVpnProfile
@@ -263,12 +262,10 @@ class HomeScreenSettingBottomSheet : BottomSheetDialogFragment() {
     private fun updateUptime() {
         val uptimeMs = VpnController.uptimeMs()
         val protocols = VpnController.protocols()
-        val ssid = VpnController.underlyingSsid()
         val netType = VpnController.netType()
         val now = System.currentTimeMillis()
         val mtu = VpnController.mtu().toString()
 
-        val isSsidPermissionGranted = SsidPermissionManager.hasRequiredPermissions(requireContext()) && SsidPermissionManager.isLocationEnabled(requireContext())
         // returns a string describing 'time' as a time relative to 'now'
         val t =
             DateUtils.getRelativeTimeSpanString(
@@ -284,11 +281,7 @@ class HomeScreenSettingBottomSheet : BottomSheetDialogFragment() {
                 getString(R.string.hsf_downtime, t)
             } else {
                 b.bsHomeScreenAppUptime.visibility = View.VISIBLE
-                if (isSsidPermissionGranted && !ssid.isNullOrEmpty()) {
-                    getString(R.string.hsf_uptime, t, protocols, netType, mtu, ssid)
-                } else {
-                    getString(R.string.hsf_uptime, t, protocols, netType, mtu, "").dropLast(9) + ")"
-                }
+                getString(R.string.hsf_uptime, t, protocols, netType, mtu, "").dropLast(9) + ")"
             }
     }
 
