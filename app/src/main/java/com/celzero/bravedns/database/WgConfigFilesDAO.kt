@@ -67,12 +67,6 @@ interface WgConfigFilesDAO {
     @Query("update WgConfigFiles set oneWireGuard = :oneWireGuard where id = :id")
     fun updateOneWireGuardConfig(id: Int, oneWireGuard: Boolean)
 
-    @Query("update WgConfigFiles set ssidEnabled = :enabled where id = :id")
-    fun updateSsidEnabled(id: Int, enabled: Boolean)
-
-    @Query("update WgConfigFiles set ssids = :ssids where id = :id")
-    fun updateSsids(id: Int, ssids: String)
-
     @Query("select * from WgConfigFiles where id = :id") fun isConfigAdded(id: Int): WgConfigFiles?
 
     @Query("select count(id) from WgConfigFiles")
