@@ -20,37 +20,6 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <!--
-        Fine and coarse location are required to read the connected WiFi SSID on
-        Android 8.0–12 (API 26–32) so that SSID-based WireGuard rules can be applied.
-        On Android 13+ (API 33+) WiFi SSID can be obtained via NetworkCapabilities /
-        WifiInfo without any location permission.
-    -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="32" />
-
-    <!--
-        FIX #12 — ACCESS_BACKGROUND_LOCATION scope restriction.
-
-        BEFORE: ACCESS_BACKGROUND_LOCATION was declared here (main manifest) with no
-        maxSdkVersion, meaning every build flavor and every Android version requested it.
-        This is overly broad because:
-          (a) Android 13+ (API 33+) can read WiFi SSID via NetworkCapabilities without any
-              location permission, so background location is completely unnecessary there.
-          (b) Even on older versions, the VPN service runs as a foreground service (it
-              shows a persistent system notification), so Android treats it as foreground
-              and may not require the background location permission for SSID access.
-
-        AFTER: ACCESS_BACKGROUND_LOCATION is moved to the full-flavor manifest only
-        (app/src/full/AndroidManifest.xml) where the SSID feature actually lives, and
-        limited to maxSdkVersion="32" so it is never requested on Android 13+ devices.
-
-        If the SSID rule feature is not present in a build flavor it will never request
-        background location at all.
-    -->
-
-    <!--
         QUERY_ALL_PACKAGES — Required for the per-app firewall feature.
 
         RethinkDNS is a per-app firewall and DNS filter. Its core function is to let
