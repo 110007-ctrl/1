@@ -5,26 +5,45 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
-        FIX #12 — ACCESS_BACKGROUND_LOCATION moved here from the main manifest.
+        ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION — full flavor only.
 
-        This permission is required only in the "full" flavor because SSID-based
-        WireGuard rules (the feature that reads the connected WiFi network name) live
-        exclusively in this flavor.
+        WHY THESE EXIST:
+        The SSID-based WireGuard tunnel-switching feature lets users configure tunnels
+        that activate or pause based on the connected WiFi network name (SSID), for
+        example "use tunnel X only on home WiFi, fall back to direct on mobile data".
+        Reading the SSID requires a location grant on Android 11 and below.
 
-        maxSdkVersion="32" ensures the permission is never requested on Android 13+
-        (API 33+), where NetworkCapabilities / WifiInfo can return the SSID without
-        any location grant.  On Android 13+ the app must use NetworkCallback with
-        ACCESS_NETWORK_STATE instead of LocationManager.
+        WHY maxSdkVersion="30" (Android 11) AND NOT "32" (Android 12):
+        On Android 12+ (API 31+) the SSID is read from NetworkCapabilities.transportInfo
+        cast to WifiInfo — this only requires ACCESS_NETWORK_STATE (already declared in
+        the main manifest). No location permission is needed on Android 12 and above.
+        On Android 11 (API 30) and below, WifiManager.getConnectionInfo().getSSID()
+        requires ACCESS_FINE_LOCATION (API 29-30) or ACCESS_COARSE_LOCATION (API 28-).
+        maxSdkVersion="30" ensures these permissions are never requested on Android 12+.
 
-        On Android 10–12 (API 29–32) background location IS required to read the SSID
-        when the VPN service needs to re-evaluate rules after the screen turns off.
-        The VPN service runs as a foreground service (persistent notification) but
-        Android still gates SSID reads on the location permission in this range.
+        THESE PERMISSIONS ARE OPTIONAL — STRICTLY OPT-IN:
+        They are requested at runtime ONLY when the user explicitly configures an
+        SSID-based WireGuard rule via WgSsidDialog. If the user denies them the SSID
+        rule feature is silently disabled; all other VPN, DNS, and firewall features
+        continue to work normally.
+
+        ACCESS_BACKGROUND_LOCATION IS NOT DECLARED because:
+        (a) The VPN runs as a foreground service (persistent notification), satisfying
+            Android's foreground-service exemption for location access on API 29-30.
+        (b) SSID re-evaluation is triggered by network-change callbacks in
+            ConnectionMonitor, which Android delivers to foreground services even when
+            the screen is off — background location is not needed for this path.
+        (c) Requesting background location shows a more prominent, alarming permission
+            dialog — unnecessary friction for an opt-in feature on a shrinking pool of
+            Android 10-11 devices.
     -->
     <uses-permission
-        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
-        android:maxSdkVersion="32"
-        tools:targetApi="29" />
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30" />
+
 
     <!--
         FIX #4 — VpnControlReceiver: add android:permission to the receiver declaration.
