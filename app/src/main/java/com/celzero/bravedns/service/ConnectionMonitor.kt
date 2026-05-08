@@ -30,7 +30,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiInfo
-import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -76,7 +75,7 @@ import kotlin.math.min
 class ConnectionMonitor(private val context: Context, private val networkListener: NetworkListener, private val serializer: CoroutineDispatcher, private val scope: CoroutineScope) : KoinComponent, DiagnosticsManager.DiagnosticsListener {
 
     private val networkSet: MutableSet<NetworkAndSsid> = ConcurrentHashMap.newKeySet()
-    data class NetworkAndSsid(val network: Network, val ssid: String?)
+    data class NetworkAndSsid(val network: Network)
 
     // Connectivity check tracking
     private data class ConnectivityCheckState(
@@ -152,8 +151,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                 override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                     scope.launch(CoroutineName("cmIntCap") + serializer) {
                         Logger.d(LOG_TAG_CONNECTION, "onCapabilitiesChanged(1S), ${network.networkHandle}, netId: ${netId(network.networkHandle)}")
-                        val ssid = getNetworkSSID(network, capabilities)
-                        addToNwSet(network, ssid)
+                        addToNwSet(network)
                         if (shouldPerformConnectivityCheck(EVENT_ON_CAPABILITIES_CHANGED)) {
                             sendNetworkChanges()
                         }
@@ -208,8 +206,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                 override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                     scope.launch(CoroutineName("cmTransCap") + serializer) {
                         Logger.d(LOG_TAG_CONNECTION, "onCapabilitiesChanged(2), ${network.networkHandle}, netId: ${netId(network.networkHandle)}")
-                        val ssid = getNetworkSSID(network, capabilities)
-                        addToNwSet(network, ssid)
+                        addToNwSet(network)
                         if (shouldPerformConnectivityCheck(EVENT_ON_CAPABILITIES_CHANGED)) {
                             sendNetworkChanges()
                         }
@@ -258,8 +255,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                 override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                     scope.launch(CoroutineName("cmTransCap") + serializer) {
                         Logger.d(LOG_TAG_CONNECTION, "onCapabilitiesChanged(2S), ${network.networkHandle}, netId: ${netId(network.networkHandle)}")
-                        val ssid = getNetworkSSID(network, capabilities)
-                        addToNwSet(network, ssid)
+                        addToNwSet(network)
                         if (shouldPerformConnectivityCheck(EVENT_ON_CAPABILITIES_CHANGED)) {
                             sendNetworkChanges()
                         }
@@ -301,8 +297,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                 override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                     scope.launch(CoroutineName("cmTransCap") + serializer) {
                         Logger.d(LOG_TAG_CONNECTION, "onCapabilitiesChanged(2), ${network.networkHandle}, netId: ${netId(network.networkHandle)}")
-                        val ssid = getNetworkSSID(network, capabilities)
-                        addToNwSet(network, ssid)
+                        addToNwSet(network)
                         if (shouldPerformConnectivityCheck(EVENT_ON_CAPABILITIES_CHANGED)) {
                             sendNetworkChanges()
                         }
@@ -343,190 +338,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
     }
 
 
-    /**
-     * Fetches the SSID for the given network if it's a WiFi network.
-     *
-     * @param network The network to get the SSID for
-     * @return The SSID of the network if it's a WiFi network and SSID is available,
-     *         null otherwise or if the network is not WiFi
-     */
-    fun getNetworkSSID(network: Network?, cap: NetworkCapabilities?): String? {
-        if (network == null) {
-            Logger.d(LOG_TAG_CONNECTION, "getNetworkSSID: network is null")
-            return null
-        }
-
-        // Check if this is a WiFi network
-        if (cap?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) {
-            Logger.v(
-                LOG_TAG_CONNECTION,
-                "getNetworkSSID: network ${network.networkHandle} is not a WiFi network"
-            )
-            return null
-        }
-
-        try {
-            if (isAtleastS()) {
-                // Check if transportInfo is actually WifiInfo before casting
-                val transportInfo = cap.transportInfo
-                val isTransportInfoWifi = transportInfo is WifiInfo
-                var ssid: String? = null
-                if (isTransportInfoWifi) {
-                    ssid = transportInfo.ssid
-                    extractCleanSsid(ssid)?.let { clean ->
-                        Logger.i(
-                            LOG_TAG_CONNECTION,
-                            "getNetworkSSID(S): $clean (${network.networkHandle})"
-                        )
-                        return clean
-                    }
-                }
-                Logger.v(
-                    LOG_TAG_CONNECTION,
-                    "isWifiInfo? $isTransportInfoWifi, (${transportInfo?.javaClass?.simpleName}), ssid: $ssid , falling back to WifiManager"
-                )
-            }
-
-            @Suppress("DEPRECATION")
-            val wifiInfo: WifiInfo? = wm.connectionInfo
-            if (wifiInfo == null) {
-                Logger.v(LOG_TAG_CONNECTION, "getNetworkSSID: WifiInfo is null")
-                return null
-            }
-
-            extractCleanSsid(wifiInfo.ssid)?.let { clean ->
-                Logger.i(
-                    LOG_TAG_CONNECTION,
-                    "getNetworkSSID(WM): $clean (${network.networkHandle})"
-                )
-                return clean
-            }
-
-            Logger.w(
-                LOG_TAG_CONNECTION,
-                "getNetworkSSID: SSID is null or unknown for network ${network.networkHandle}"
-            )
-            showNotificationIfNeeded()
-            return null
-
-        } catch (e: SecurityException) {
-            Logger.w(LOG_TAG_CONNECTION, "getNetworkSSID: SecurityException accessing WiFi info", e)
-            return null
-        } catch (e: Exception) {
-            Logger.w(
-                LOG_TAG_CONNECTION,
-                "getNetworkSSID: Exception getting SSID for network ${network.networkHandle}",
-                e
-            )
-            return null
-        }
-    }
-
-    private fun extractCleanSsid(ssid: String?): String? {
-        if (ssid.isNullOrEmpty() || ssid == UNKNOWN_SSID) return null
-        return ssid.removeSurrounding("\"")
-    }
-
-    private fun showNotificationIfNeeded() {
-        val wgs = WireguardManager.getActiveSsidEnabledConfigs()
-        if (wgs.isEmpty()) return
-
-        val hasPermission = SsidPermissionManager.hasRequiredPermissions(context)
-        val locationEnabled = SsidPermissionManager.isLocationEnabled(context)
-        if (hasPermission && locationEnabled) return
-
-        val notificationManager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-
-        // check if notification is already active to prevent duplicates
-        val activeNotifications = notificationManager.activeNotifications
-        val isNotificationAlreadyActive = activeNotifications.any { notification ->
-            notification.id == NOTIF_ID_SSID_LOCATION_PERMISSION
-        }
-        if (isNotificationAlreadyActive) {
-            Logger.i(LOG_TAG_VPN, "ssid wgs: notification already active, skipping")
-            return
-        }
-
-        Logger.w(LOG_TAG_VPN, "ssid wgs: missing permissions, show notification")
-        val intent = Intent(context, NotificationHandlerActivity::class.java)
-        intent.putExtra(
-            NOTIF_WG_PERMISSION_NAME,
-            NOTIF_WG_PERMISSION_VALUE
-        )
-        val pendingIntent =
-            Utilities.getActivityPendingIntent(
-                context,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                mutable = false
-            )
-
-        var builder: NotificationCompat.Builder
-        if (isAtleastO()) {
-            val name: CharSequence = context.getString(R.string.notif_channel_firewall_alerts)
-            val description = context.resources.getString(R.string.notif_channel_desc_firewall_alerts)
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(NOTIF_CHANNEL_ID_WIREGUARD_ALERTS, name, importance)
-            channel.description = description
-            notificationManager.createNotificationChannel(channel)
-            builder = NotificationCompat.Builder(context, NOTIF_CHANNEL_ID_WIREGUARD_ALERTS)
-        } else {
-            builder = NotificationCompat.Builder(context, NOTIF_CHANNEL_ID_WIREGUARD_ALERTS)
-        }
-
-        val contentTitle: String = context.resources.getString(R.string.lbl_action_required)
-        val contentText: String =
-            context.getString(R.string.location_enable_explanation, context.getString(R.string.lbl_ssids))
-
-        builder
-            .setSmallIcon(R.drawable.ic_notification_icon)
-            .setContentTitle(contentTitle)
-            .setContentIntent(pendingIntent)
-            .setContentText(contentText)
-
-        builder.setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
-        builder.color = ContextCompat.getColor(context, getAccentColor(persistentState.theme))
-
-        // Secret notifications are not shown on the lock screen.  No need for this app to show
-        // there.
-        // Only available in API >= 21
-        builder = builder.setVisibility(NotificationCompat.VISIBILITY_SECRET)
-
-        // Cancel the notification after clicking.
-        builder.setAutoCancel(true)
-
-        notificationManager.notify(
-            NOTIF_CHANNEL_ID_FIREWALL_ALERTS,
-            NOTIF_ID_SSID_LOCATION_PERMISSION,
-            builder.build()
-        )
-    }
-
-    private val networkRequest: NetworkRequest =
-        NetworkRequest.Builder()
-            .apply { if (isAtleastR()) clearCapabilities() else removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) }
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            .apply { if (isAtleastS()) setIncludeOtherUidNetworks(true) }
-            .build()
-
-    private val networkRequestWithTransports: NetworkRequest =
-        NetworkRequest.Builder()
-            .apply { if (isAtleastR()) clearCapabilities() else removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) }
-            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
-            .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .apply { if (isAtleastS()) setIncludeOtherUidNetworks(true) }
-            // api27: .addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
-            // api26: .addTransportType(NetworkCapabilities.TRANSPORT_LOWPAN)
-            .build()
-
-    private val persistentState by inject<PersistentState>()
-
     private lateinit var cm: ConnectivityManager
-    private lateinit var wm: WifiManager
 
     private var diagsMgr: DiagnosticsManager? = null
 
@@ -544,9 +356,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
         const val SCHEME_HTTPS = "https"
         const val SCHEME_IP = "ip"
 
-        private const val UNKNOWN_SSID = "<unknown ssid>"
 
-        const val NOTIF_ID_SSID_LOCATION_PERMISSION = 105
 
         // variable to check whether to rely on the TCP/UDP reachability checks from
         // kotlin end instead of tunnel reachability checks, set false by default for now
@@ -613,11 +423,9 @@ class ConnectionMonitor(private val context: Context, private val networkListene
         suspend fun onNetworkChange(networks: UnderlyingNetworks)
     }
 
-    private fun addToNwSet(network: Network, ssid: String? = null) {
-        val old = networkSet.find { it.network == network }
-        val networkSsid = NetworkAndSsid(network, ssid ?: old?.ssid )
+    private fun addToNwSet(network: Network) {
         networkSet.removeIf { it.network == network }
-        networkSet.add(networkSsid) // ensure the network is added to the set
+        networkSet.add(NetworkAndSsid(network))
     }
 
     private fun removeFromNwSet(network: Network) {
@@ -679,8 +487,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
             // initialize channel before registering
             channel = Channel(Channel.CONFLATED)
             cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
             val networkBehaviour = getConnectionMonitorBehaviour()
             Logger.i(LOG_TAG_CONNECTION, "new vpn is created force update the network, policy: $networkBehaviour")
             val success = registerCallbackBasedOnPolicy()
@@ -868,8 +674,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
         val network: Network,
         val capabilities: NetworkCapabilities,
         val linkProperties: LinkProperties?,
-        val networkType: String,
-        val ssid: String?
+        val networkType: String
     )
 
     data class UnderlyingNetworks(
@@ -880,7 +685,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
         val minMtu: Int,
         var isActiveNetworkMetered: Boolean, // may be updated by client listener
         var isActiveNetworkCellular: Boolean,
-        val activeSsid: String?, // may be updated by client listener
         var lastUpdated: Long, // may be updated by client listener
         val dnsServers: Map<InetAddress, Network>,
         var vpnLockdown: Boolean = false // updated by client listener
@@ -985,11 +789,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
             val vpnRoutes = determineVpnProtos(opPrefs.networkSet)
             val isDnsChanged = hasNwDnsChanged(currentNetworks, newNetworks)
             val isLinkAddressChanged = hasLinkAddrChanged(currentNetworks, newNetworks)
-            var activeSsid = newNetworks.firstOrNull { it.network.networkHandle == newActiveNetwork?.networkHandle }?.ssid
-            if (activeSsid == null) {
-                // fetch from newNetworks set
-                activeSsid = newNetworks.firstOrNull { it.ssid != null }?.ssid
-            }
 
             Logger.i(LOG_TAG_CONNECTION, "process message active nws, currNws: $newNetworks")
             Logger.i(
@@ -997,13 +796,13 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                 "Connected network: ${newActiveNetwork?.networkHandle} ${
                     networkType(newActiveNetworkCap)
                 }, netid: ${netId(newActiveNetwork?.networkHandle)}, new? $isNewNetwork, test? ${opPrefs.testReachability}," +
-                 "cellular? $isActiveNetworkCellular, metered? $isActiveNetworkMetered, dns-changed? $isDnsChanged, link-address-changed? $isLinkAddressChanged, activeSsid: $activeSsid"
+                 "cellular? $isActiveNetworkCellular, metered? $isActiveNetworkMetered, dns-changed? $isDnsChanged, link-address-changed? $isLinkAddressChanged"
             )
 
             currentNetworks = newNetworks
             repopulateTrackedNetworks(opPrefs, currentNetworks)
             // client code must call setUnderlyingNetworks() to invoke linkCapabilities for other uids
-            informListener(true, isActiveNetworkMetered, isActiveNetworkCellular, activeSsid, vpnRoutes)
+            informListener(true, isActiveNetworkMetered, isActiveNetworkCellular, vpnRoutes)
         }
 
         private suspend fun hasNwDnsChanged(currNws: Set<NetworkProperties>, newNws: Set<NetworkProperties>): Boolean {
@@ -1030,18 +829,13 @@ class ConnectionMonitor(private val context: Context, private val networkListene
             val isActiveNetworkCellular = isNetworkCellular(newActiveNetwork)
             val isDnsChanged = hasNwDnsChanged(currentNetworks, newNetworks)
             val isLinkAddressChanged = hasLinkAddrChanged(currentNetworks, newNetworks)
-            var activeSsid = newNetworks.firstOrNull { it.network.networkHandle == newActiveNetwork?.networkHandle }?.ssid
-            if (activeSsid == null) {
-                // fetch from newNetworks set
-                activeSsid = newNetworks.firstOrNull { it.ssid != null }?.ssid
-            }
 
             Logger.i(LOG_TAG_CONNECTION, "process message all nws, currNws: $newNetworks")
-            Logger.i(LOG_TAG_CONNECTION, "process message all nws, newNws: $newNetworks \nnew? $isNewNetwork, test? ${opPrefs.testReachability}, cellular? $isActiveNetworkCellular, metered? $isActiveNetworkMetered, dns-changed? $isDnsChanged, link-addr-changed? $isLinkAddressChanged, activeSsid: $activeSsid")
+            Logger.i(LOG_TAG_CONNECTION, "process message all nws, newNws: $newNetworks \nnew? $isNewNetwork, test? ${opPrefs.testReachability}, cellular? $isActiveNetworkCellular, metered? $isActiveNetworkMetered, dns-changed? $isDnsChanged, link-addr-changed? $isLinkAddressChanged")
 
             currentNetworks = newNetworks
             repopulateTrackedNetworks(opPrefs, currentNetworks)
-            informListener(false, isActiveNetworkMetered, isActiveNetworkCellular, activeSsid, vpnRoutes)
+            informListener(false, isActiveNetworkMetered, isActiveNetworkCellular, vpnRoutes)
         }
 
         /**
@@ -1180,7 +974,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
             useActiveNetwork: Boolean = false,
             isActiveNetworkMetered: Boolean,
             isActiveNetworkCellular: Boolean,
-            activeSsid: String?,
             vpnRoutes: Pair<Boolean, Boolean>?
         ) {
             // TODO: use currentNetworks instead of trackedIpv4Networks and trackedIpv6Networks
@@ -1213,7 +1006,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                         determineMtu(useActiveNetwork),
                         isActiveNetworkMetered,
                         isActiveNetworkCellular,
-                        activeSsid,
                         SystemClock.elapsedRealtimeNanos(),
                         Collections.unmodifiableMap(dnsServers)
                     )
@@ -1228,7 +1020,6 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                         DEFAULT_MTU,
                         isActiveNetworkMetered = false,
                         isActiveNetworkCellular = false,
-                        null,
                         SystemClock.elapsedRealtimeNanos(),
                         LinkedHashMap()
                     )
@@ -1744,8 +1535,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                     networkType(activeCap) + ", NotMetered?" + isConnectionNotMetered(activeCap)
                 val activeProp =
                     if (activeCap != null) {
-                        val ssid = networkSet.firstOrNull { ns -> ns.network.networkHandle == it.networkHandle }?.ssid
-                        NetworkProperties(it, activeCap, activeLp, nwType, ssid)
+                        NetworkProperties(it, activeCap, activeLp, nwType, null)
                     } else {
                         null
                     }
@@ -1771,8 +1561,7 @@ class ConnectionMonitor(private val context: Context, private val networkListene
                     if (cap != null) {
                         val nwType =
                             networkType(cap) + ", NotMetered?" + isConnectionNotMetered(cap)
-                        val ssid = networkSet.firstOrNull { ns -> ns.network == it }?.ssid
-                        NetworkProperties(it, cap, lp, nwType, ssid)
+                        NetworkProperties(it, cap, lp, nwType, null)
                     } else {
                         null
                     }
