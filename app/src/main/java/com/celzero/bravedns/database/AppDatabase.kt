@@ -53,7 +53,7 @@ import com.celzero.bravedns.util.Constants
         SubscriptionStatus::class,
         SubscriptionStateHistory::class
     ],
-    version = 27,
+    version = 28,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -101,6 +101,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_24_25)
                 .addMigrations(MIGRATION_25_26)
                 .addMigrations(MIGRATION_26_27)
+                .addMigrations(MIGRATION_27_28)
                 .build()
 
         private val roomCallback: Callback =
@@ -1103,6 +1104,21 @@ abstract class AppDatabase : RoomDatabase() {
                     } catch (e: Exception) {
                         Logger.e(LOG_TAG_APP_DB, "MIGRATION_26_27: temp allow columns already exist, ignore", e)
                     }
+                }
+            }
+
+
+        private val MIGRATION_27_28: Migration =
+            object : Migration(27, 28) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // Remove ssidEnabled and ssids columns from WgConfigFiles.
+                    // SSID-based WireGuard tunnel switching has been removed from the app;
+                    // no location permission is required any more.
+                    db.execSQL("CREATE TABLE 'WgConfigFiles_new' ('id' INTEGER NOT NULL, 'name' TEXT NOT NULL, 'configPath' TEXT NOT NULL, 'serverResponse' TEXT NOT NULL, 'isActive' INTEGER NOT NULL, 'isDeletable' INTEGER NOT NULL, 'isCatchAll' INTEGER NOT NULL, 'oneWireGuard' INTEGER NOT NULL, 'useOnlyOnMetered' INTEGER NOT NULL, 'modifiedTs' INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (id))")
+                    db.execSQL("INSERT INTO WgConfigFiles_new SELECT id, name, configPath, serverResponse, isActive, isDeletable, isCatchAll, oneWireGuard, useOnlyOnMetered, modifiedTs FROM WgConfigFiles")
+                    db.execSQL("DROP TABLE WgConfigFiles")
+                    db.execSQL("ALTER TABLE WgConfigFiles_new RENAME TO WgConfigFiles")
+                    Logger.i(LOG_TAG_APP_DB, "MIGRATION_27_28: removed ssidEnabled and ssids columns")
                 }
             }
 
