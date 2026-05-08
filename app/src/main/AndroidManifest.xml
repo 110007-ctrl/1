@@ -50,9 +50,25 @@
         background location at all.
     -->
 
-    <!-- Android 11 introduces changes related to package visibility. These changes affect
-    apps only if they target Android 11.
-    https://developer.android.com/training/package-visibility -->
+    <!--
+        QUERY_ALL_PACKAGES — Required for the per-app firewall feature.
+
+        RethinkDNS is a per-app firewall and DNS filter. Its core function is to let
+        users create allow/block rules for specific installed applications. To display
+        the list of all installed apps (with icons, names, and traffic stats) and apply
+        per-app rules, the app must enumerate every installed package on the device.
+        Without QUERY_ALL_PACKAGES, Android 11+ only returns apps that explicitly list
+        RethinkDNS in their <queries> element — making the per-app firewall non-functional.
+
+        There is no narrower alternative: a static <queries> element cannot substitute
+        for the dynamic full-package list used to build a real per-app firewall engine.
+
+        Privacy mitigation: the package list is used ONLY to build the in-app firewall
+        UI and apply rules inside the local VPN service. No package inventory is ever
+        transmitted to any remote server.
+
+        See: https://developer.android.com/training/package-visibility/use-cases
+    -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -180,4 +196,22 @@
         </service>
 
     </application>
+
+    <!--
+        CAMERA permission — baseline removal for non-full-flavor builds.
+
+        The CAMERA permission is injected automatically by the zxing QR-scanner AAR
+        (com.journeyapps:zxing-android-embedded). zxing is a fullImplementation
+        dependency present only in the full flavor. This tools:node="remove" ensures
+        non-full builds (headless, website) never accidentally inherit CAMERA from a
+        transitive dependency.
+
+        The full-flavor manifest (app/src/full/AndroidManifest.xml) overrides this
+        with an explicit declaration that documents the purpose and marks the camera
+        hardware feature as android:required="false".
+    -->
+    <uses-permission
+        android:name="android.permission.CAMERA"
+        tools:node="remove" />
+
 </manifest>
