@@ -76,11 +76,5 @@ class WgConfigFilesRepository(private val wgConfigFilesDAO: WgConfigFilesDAO) {
         wgConfigFilesDAO.disableConfig(id)
     }
 
-    suspend fun updateSsidEnabled(id: Int, enabled: Boolean) {
-        wgConfigFilesDAO.updateSsidEnabled(id, enabled)
-    }
 
-    suspend fun updateSsids(id: Int, ssids: String) {
-        wgConfigFilesDAO.updateSsids(id, ssids)
-    }
 }
