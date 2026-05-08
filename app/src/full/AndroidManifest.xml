@@ -65,6 +65,35 @@
         android:name="${applicationId}.permission.FILE_PROVIDER_ACCESS"
         android:protectionLevel="signature" />
 
+
+    <!--
+        CAMERA — Required for WireGuard QR-code import (full flavor only).
+
+        The zxing QR-scanner library (fullImplementation) injects CAMERA automatically
+        via its AAR manifest. We declare it explicitly here to:
+          (a) Document the purpose: used exclusively in WgMainActivity for scanning
+              WireGuard configuration QR codes. No background camera access occurs.
+          (b) Override the zxing default with android:required="false" (via the
+              uses-feature declaration below) so the app remains installable on
+              camera-less devices (tablets, Chromebooks). On such devices the user
+              can enter configs manually instead of scanning.
+
+        CAMERA is a 'dangerous' permission that triggers a runtime grant dialog. It is
+        only requested at the moment the user initiates a QR scan — never in the
+        background, never at app launch.
+
+        The main manifest carries a complementary tools:node="remove" declaration so
+        this permission cannot silently appear in non-full-flavor builds.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+        Declare camera hardware as NOT required so the app installs on devices
+        without a camera (the QR import feature gracefully falls back to manual entry).
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <!-- allowBackup/dataExtractionRules/fullBackupContent are set here to make the
          backup-configuration fix explicit in this flavor manifest so SAST scanners
          that analyse each manifest in isolation can verify the setting. The values
@@ -85,10 +114,40 @@
             android:finishOnTaskLaunch="true" />
         <activity android:name=".ui.HomeScreenActivity"
             android:launchMode="singleTask" />
+        <!--
+            ExportedActivity — AppLockActivity is intentionally exported for three reasons:
+
+            1. The launcher alias (.ui.activity.LauncherAliasAppLock) targets it as the
+               primary entry point when app-lock is enabled; the OS launcher must be able
+               to start it directly.
+            2. android.service.quicksettings.action.QS_TILE_PREFERENCES is delivered by
+               the Android Quick Settings framework — it requires exported="true".
+            3. The .rbk backup file-viewer intent filter lets the OS file picker hand off
+               backup files to this app — also requires exported="true".
+
+            SECURITY RATIONALE — Exported state creates NO bypass risk:
+              • Every onCreate() code path either calls showBiometricPrompt() (biometric
+                auth required) or startHomeActivity() — the latter is only reached when
+                the user has explicitly disabled biometrics, the session was already
+                authenticated within the configured timeout, or the device is a TV where
+                biometrics are unavailable.
+              • On biometric failure or cancellation, finishAffinity() is called — no
+                content is accessible to the caller.
+              • When available, auth uses a hardware-backed CryptoObject (AES-256/GCM
+                in AndroidKeyStore, BIOMETRIC_STRONG) that cannot be bypassed by hooking
+                onAuthenticationSucceeded() or via accessibility/instrumentation attacks.
+              • The key is invalidated when new biometrics are enrolled, preventing an
+                attacker from enrolling their own fingerprint to gain access.
+
+            An android:permission guard cannot be applied: the OS launcher, Quick Settings
+            framework, and file manager do not hold (and cannot hold) any app-specific
+            permission. Code-level enforcement above provides equivalent protection.
+        -->
         <activity
             android:name=".ui.activity.AppLockActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            tools:ignore="ExportedActivity">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
