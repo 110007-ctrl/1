@@ -440,12 +440,6 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
     var maxDnsCacheTtlSec by longPref("max_dns_cache_ttl_sec").withDefault<Long>(3600L)
     var dnsCacheMaxEntries by intPref("dns_cache_max_entries").withDefault<Int>(10_000)
 
-    // SECURITY (VULN-G): When enabled, SSID-based WireGuard pause requires the
-    // current BSSID to match the BSSID first observed for that SSID (TOFU). This
-    // prevents an evil-twin AP that copies a known SSID from silently pausing the
-    // tunnel. Defaults to true.
-    var requireBssidMatchForSsid by booleanPref("require_bssid_match_ssid").withDefault<Boolean>(true)
-
     // set vpn builder to metered/unmetered
     var setVpnBuilderToMetered by booleanPref("set_vpn_builder_to_metered").withDefault<Boolean>(false)
 
