@@ -200,6 +200,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     @Volatile
     private var usqueWarpRunning: Boolean = false
     private var usqueWatchdogJob: kotlinx.coroutines.Job? = null
+    @Volatile private var usqueLastWatchdogRestartMs = 0L
 
     private val flowDispatcher by lazy { Daemons.ioDispatcher("flow", Mark(),  vpnScope) }
     private val inflowDispatcher by lazy { Daemons.ioDispatcher("inflow", Mark(), vpnScope) }
@@ -1563,6 +1564,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                           if (!UsqueManager.probeUsqueLiveness()) {
                               Logger.w(LOG_TAG_VPN, "usque: watchdog liveness probe failed — restarting")
                               UsqueManager.startSocksProxy(applicationContext)
+                              usqueLastWatchdogRestartMs = System.currentTimeMillis()
                           }
                       }
                   }
@@ -3065,8 +3067,9 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                   // Sprint 14: usque holds a QUIC/WARP connection bound to the old physical interface.
                   // When the interface switches (WiFi→LTE or reverse), that connection dies silently.
                   // Restart usque so it re-establishes the WARP tunnel on the new interface.
-                  if (networkSwitched && persistentState.usqueEnabled) {
-                      io("usqueNetworkAdapt") {
+                  // Guard: skip if the watchdog just restarted usque < 5s ago to prevent cascade.
+                  val msSinceWatchdog = System.currentTimeMillis() - usqueLastWatchdogRestartMs
+                  if (networkSwitched && persistentState.usqueEnabled && msSinceWatchdog > 5_000L) {
                           kotlinx.coroutines.delay(1500L) // let new route settle before usque binds
                           Logger.i(LOG_TAG_VPN, "usque: restarting for interface switch (WiFi↔LTE)")
                           UsqueManager.startSocksProxy(applicationContext)
