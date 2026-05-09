@@ -250,6 +250,25 @@ object UsqueManager {
         } catch (_: Exception) { false }
     }
 
+      /**
+       * Full SOCKS5 handshake probe — confirms the WARP tunnel is alive end-to-end,
+       * not just that the port is open. A zombie process can hold the port open while
+       * the underlying QUIC/WARP connection to Cloudflare is dead (e.g. after WiFi→LTE).
+       */
+      suspend fun probeUsqueLiveness(): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+          try {
+              java.net.Socket().use { s ->
+                  s.soTimeout = 2000
+                  s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 2000)
+                  s.getOutputStream().write(byteArrayOf(5, 1, 0)) // SOCKS5 greeting
+                  val resp = ByteArray(2)
+                  val n = s.getInputStream().read(resp)
+                  n == 2 && resp[0] == 5.toByte() && resp[1] == 0.toByte()
+              }
+          } catch (_: Exception) { false }
+      }
+  
+
     /**
      * Called from onResume when usqueEnabled=true but process ref is lost.
      * Sets portConfirmedAlive=true so isRunning() returns true and the UI shows ON.

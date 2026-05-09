@@ -199,6 +199,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     // WARP tunnel process reference
     @Volatile
     private var usqueWarpRunning: Boolean = false
+    private var usqueWatchdogJob: kotlinx.coroutines.Job? = null
 
     private val flowDispatcher by lazy { Daemons.ioDispatcher("flow", Mark(),  vpnScope) }
     private val inflowDispatcher by lazy { Daemons.ioDispatcher("inflow", Mark(), vpnScope) }
@@ -1551,6 +1552,22 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         if (isAtleastQ()) {
             handleFirewallBubbleIfNeeded()
         }
+
+          // Sprint 14: start usque watchdog — probes liveness every 30s and restarts on dead tunnel
+          if (persistentState.usqueEnabled) {
+              usqueWatchdogJob?.cancel()
+              usqueWatchdogJob = io("usqueWatchdog") {
+                  while (true) {
+                      kotlinx.coroutines.delay(30_000L)
+                      if (persistentState.usqueEnabled && UsqueManager.isRunning()) {
+                          if (!UsqueManager.probeUsqueLiveness()) {
+                              Logger.w(LOG_TAG_VPN, "usque: watchdog liveness probe failed — restarting")
+                              UsqueManager.startSocksProxy(applicationContext)
+                          }
+                      }
+                  }
+              }
+          }
     }
 
 
@@ -3044,6 +3061,17 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             if (networkSwitched) {
                 Logger.i(LOG_TAG_VPN, "onNetworkChange: underlying network switched, forcing VPN restart")
             }
+
+                  // Sprint 14: usque holds a QUIC/WARP connection bound to the old physical interface.
+                  // When the interface switches (WiFi→LTE or reverse), that connection dies silently.
+                  // Restart usque so it re-establishes the WARP tunnel on the new interface.
+                  if (networkSwitched && persistentState.usqueEnabled) {
+                      io("usqueNetworkAdapt") {
+                          kotlinx.coroutines.delay(1500L) // let new route settle before usque binds
+                          Logger.i(LOG_TAG_VPN, "usque: restarting for interface switch (WiFi↔LTE)")
+                          UsqueManager.startSocksProxy(applicationContext)
+                      }
+                  }
             // force restart when network count changes from/to 0, or network itself switched
             val forceRestart = (prevSize == 0 && currSize > 0) || (prevSize > 0 && currSize == 0) || networkSwitched
             if (currSize > 0) {
@@ -3499,6 +3527,8 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
     override fun onDestroy() {
         UsqueManager.stopSocksProxy()   // ← ADD THIS LINE
+        usqueWatchdogJob?.cancel()
+          usqueWatchdogJob = null
         // ... rest of existing onDestroy code unchanged ...
         if (persistentState.firewallBubbleEnabled) {
             BubbleHelper.dismissBubble(this)
