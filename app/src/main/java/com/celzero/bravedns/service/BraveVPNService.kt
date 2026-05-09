@@ -3070,6 +3070,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                   // Guard: skip if the watchdog just restarted usque < 5s ago to prevent cascade.
                   val msSinceWatchdog = System.currentTimeMillis() - usqueLastWatchdogRestartMs
                   if (networkSwitched && persistentState.usqueEnabled && msSinceWatchdog > 5_000L) {
+                      io("usqueNetworkAdapt") {
                           kotlinx.coroutines.delay(1500L) // let new route settle before usque binds
                           Logger.i(LOG_TAG_VPN, "usque: restarting for interface switch (WiFi↔LTE)")
                           UsqueManager.startSocksProxy(applicationContext)
