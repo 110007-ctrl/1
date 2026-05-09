@@ -256,14 +256,33 @@ object UsqueManager {
        * the underlying QUIC/WARP connection to Cloudflare is dead (e.g. after WiFi→LTE).
        */
       suspend fun probeUsqueLiveness(): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+          // Sprint 17 fix: a simple SOCKS5 handshake to 127.0.0.1:40000 is loopback-only —
+          // it succeeds even when the WARP QUIC tunnel to Cloudflare is completely dead.
+          // We must send a real SOCKS5 CONNECT through the proxy to an external IP so that
+          // the request actually travels through libusque.so → Cloudflare WARP → internet.
+          // 1.1.1.1:80 (Cloudflare DNS-over-HTTP) is ideal: same operator as WARP, always up.
+          // REP byte 0x00 = "succeeded" → upstream alive. Anything else or exception → dead.
           try {
               java.net.Socket().use { s ->
-                  s.soTimeout = 2000
+                  s.soTimeout = 5000
                   s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 2000)
-                  s.getOutputStream().write(byteArrayOf(5, 1, 0)) // SOCKS5 greeting
-                  val resp = ByteArray(2)
-                  val n = s.getInputStream().read(resp)
-                  n == 2 && resp[0] == 5.toByte() && resp[1] != 0xFF.toByte()
+                  val out = s.getOutputStream()
+                  val inp = s.getInputStream()
+
+                  // SOCKS5 greeting: version=5, nmethods=1, method=0x00 (no auth)
+                  out.write(byteArrayOf(5, 1, 0))
+                  val greet = ByteArray(2)
+                  if (inp.read(greet) != 2 || greet[0] != 5.toByte() || greet[1] == 0xFF.toByte()) {
+                      return@withContext false
+                  }
+
+                  // SOCKS5 CONNECT to 1.1.1.1:80
+                  // VER=5, CMD=CONNECT(1), RSV=0, ATYP=IPv4(1), DST.ADDR=1.1.1.1, DST.PORT=80
+                  out.write(byteArrayOf(5, 1, 0, 1, 1, 1, 1, 1, 0, 80))
+                  val rep = ByteArray(10) // minimal reply: VER RSV REP RSV ATYP ADDR(4) PORT(2)
+                  val n = inp.read(rep)
+                  // rep[1] == 0x00 means "succeeded" — upstream reached 1.1.1.1
+                  n >= 2 && rep[0] == 5.toByte() && rep[1] == 0x00.toByte()
               }
           } catch (_: Exception) { false }
       }
