@@ -201,6 +201,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     private var usqueWarpRunning: Boolean = false
     private var usqueWatchdogJob: kotlinx.coroutines.Job? = null
     @Volatile private var usqueLastWatchdogRestartMs = 0L
+    @Volatile private var usqueNetworkLost = false // Sprint 17: WiFi→void→LTE handoff tracking
 
     private val flowDispatcher by lazy { Daemons.ioDispatcher("flow", Mark(),  vpnScope) }
     private val inflowDispatcher by lazy { Daemons.ioDispatcher("inflow", Mark(), vpnScope) }
@@ -3064,18 +3065,45 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                 Logger.i(LOG_TAG_VPN, "onNetworkChange: underlying network switched, forcing VPN restart")
             }
 
-                  // Sprint 14: usque holds a QUIC/WARP connection bound to the old physical interface.
-                  // When the interface switches (WiFi→LTE or reverse), that connection dies silently.
-                  // Restart usque so it re-establishes the WARP tunnel on the new interface.
-                  // Guard: skip if the watchdog just restarted usque < 5s ago to prevent cascade.
-                  val msSinceWatchdog = System.currentTimeMillis() - usqueLastWatchdogRestartMs
-                  if (networkSwitched && persistentState.usqueEnabled && msSinceWatchdog > 5_000L) {
-                      io("usqueNetworkAdapt") {
-                          kotlinx.coroutines.delay(1500L) // let new route settle before usque binds
-                          Logger.i(LOG_TAG_VPN, "usque: restarting for interface switch (WiFi↔LTE)")
-                          UsqueManager.startSocksProxy(applicationContext)
-                      }
-                  }
+            // Sprint 17: restart usque on ANY interface transition, including WiFi→void→LTE.
+            // The old Sprint 14 check (networkSwitched) only fired when BOTH prev and curr
+            // were non-empty. When WiFi drops first: currHandles={} → false. When LTE appears:
+            // prevHandles={} → false again. Neither leg fired, leaving a zombie WARP tunnel.
+            // Now we track three cases via usqueNetworkLost:
+            //   direct handoff  (prev>0 && curr>0 && different)  → restart immediately
+            //   network gone    (prev>0 && curr==0)               → set usqueNetworkLost flag
+            //   network back    (prev==0 && curr>0 && flag set)   → restart after 1.5s settle
+            if (persistentState.usqueEnabled) {
+                val msSinceWatchdog = System.currentTimeMillis() - usqueLastWatchdogRestartMs
+                val prevSz = prevHandles.size
+                val currSz = currHandles.size
+                when {
+                    networkSwitched && msSinceWatchdog > 5_000L -> {
+                        // direct handoff: WiFi→LTE with no gap
+                        io("usqueNetworkAdapt") {
+                            kotlinx.coroutines.delay(1500L)
+                            Logger.i(LOG_TAG_VPN, "usque: restarting for direct interface switch (WiFi↔LTE)")
+                            usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                            UsqueManager.startSocksProxy(applicationContext)
+                        }
+                    }
+                    prevSz > 0 && currSz == 0 -> {
+                        // network gone (e.g. WiFi dropped, LTE not yet)
+                        Logger.i(LOG_TAG_VPN, "usque: network lost, flagging for restart on recovery")
+                        usqueNetworkLost = true
+                    }
+                    prevSz == 0 && currSz > 0 && usqueNetworkLost -> {
+                        // network recovered after a gap (LTE appeared after WiFi drop)
+                        usqueNetworkLost = false
+                        io("usqueNetworkAdapt") {
+                            kotlinx.coroutines.delay(1500L)
+                            Logger.i(LOG_TAG_VPN, "usque: network recovered after loss, restarting WARP tunnel")
+                            usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                            UsqueManager.startSocksProxy(applicationContext)
+                        }
+                    }
+                }
+            }
             // force restart when network count changes from/to 0, or network itself switched
             val forceRestart = (prevSize == 0 && currSize > 0) || (prevSize > 0 && currSize == 0) || networkSwitched
             if (currSize > 0) {
