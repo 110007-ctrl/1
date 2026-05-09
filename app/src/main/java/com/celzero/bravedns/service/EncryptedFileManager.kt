@@ -165,7 +165,12 @@ object EncryptedFileManager : KoinComponent {
 
             // Config parsing failure is not an encryption error
             return Config.parse(ist)
-        } catch (e: Exception) {
+        } catch (e: java.io.FileNotFoundException) {
+              // Not a crypto failure — file simply doesn't exist on disk (stale DB entry).
+              // Return null so the caller can skip gracefully without triggering deleteConfig.
+              Logger.w(LOG_TAG, "WireGuard config file not found (stale DB entry?): $fileToRead")
+              null
+          } catch (e: Exception) {
             throw handleCriticalException(e, "Read WireGuard config", fileToRead)
         } finally {
             try {

@@ -263,7 +263,7 @@ object UsqueManager {
                   s.getOutputStream().write(byteArrayOf(5, 1, 0)) // SOCKS5 greeting
                   val resp = ByteArray(2)
                   val n = s.getInputStream().read(resp)
-                  n == 2 && resp[0] == 5.toByte() && resp[1] == 0.toByte()
+                  n == 2 && resp[0] == 5.toByte() && resp[1] != 0xFF.toByte()
               }
           } catch (_: Exception) { false }
       }
