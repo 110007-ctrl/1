@@ -1128,7 +1128,19 @@ internal constructor(
                 )
             }
         } else {
-            removeAllProxies()
+            // Sprint 12 fix: only wipe proxies if the type being removed matches the current
+            // active type. Previously ANY removeProxy call where currentType != HTTP_SOCKS5
+            // (e.g. removeProxy(WIREGUARD, WIREGUARD) during WG config cleanup) would call
+            // removeAllProxies() and silently nuke an active SOCKS5/WARP config, causing
+            // tunProxyMode=NONE on the next VPN start and 55+ seconds of routing to wrong port.
+            if (removeType == currentProxyType) {
+                removeAllProxies()
+            } else {
+                Logger.w(
+                    LOG_TAG_VPN,
+                    "removeProxy: type mismatch — skipping wipe. current=${currentProxyType.name}, removing=${removeType.name}/${removeProvider.name}"
+                )
+            }
         }
     }
 

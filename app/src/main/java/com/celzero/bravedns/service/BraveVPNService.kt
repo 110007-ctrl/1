@@ -1566,6 +1566,10 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                               Logger.w(LOG_TAG_VPN, "usque: watchdog liveness probe failed — restarting")
                               UsqueManager.startSocksProxy(applicationContext)
                               usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                              // Sprint 15: flush stale DoH HTTP/2 connections from the old usque
+                              // process. Without this the Go DNS transport holds zombie connections
+                              // for ~30s, blocking all DNS resolution even though usque is back up.
+                              refreshResolvers()
                           }
                       }
                   }
@@ -1926,6 +1930,10 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                 Logger.i(LOG_TAG_VPN, "usque: restarting socks proxy before vpn tunnel start")
                 val ok = UsqueManager.startSocksProxy(applicationContext)
                 Logger.i(LOG_TAG_VPN, "usque: socks proxy restart result: $ok")
+                if (ok) {
+                    // Sprint 15: flush stale DoH connections so DNS resolves immediately
+                    refreshResolvers()
+                }
                 if (!ok) {
                     persistentState.usqueEnabled = false
                     appConfig.removeProxy(AppConfig.ProxyType.SOCKS5, AppConfig.ProxyProvider.CUSTOM)
@@ -3085,6 +3093,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                             Logger.i(LOG_TAG_VPN, "usque: restarting for direct interface switch (WiFi↔LTE)")
                             usqueLastWatchdogRestartMs = System.currentTimeMillis()
                             UsqueManager.startSocksProxy(applicationContext)
+                            refreshResolvers() // Sprint 15: flush stale DoH connections
                         }
                     }
                     prevSz > 0 && currSz == 0 -> {
@@ -3100,6 +3109,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                             Logger.i(LOG_TAG_VPN, "usque: network recovered after loss, restarting WARP tunnel")
                             usqueLastWatchdogRestartMs = System.currentTimeMillis()
                             UsqueManager.startSocksProxy(applicationContext)
+                            refreshResolvers() // Sprint 15: flush stale DoH connections
                         }
                     }
                 }
