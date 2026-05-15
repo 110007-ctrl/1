@@ -203,6 +203,36 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     @Volatile private var usqueLastWatchdogRestartMs = 0L
     @Volatile private var usqueNetworkLost = false // Sprint 17: WiFi→void→LTE handoff tracking
 
+    // Sprint 20 Bug 1: Doze-proof alarm watchdog receiver and helpers.
+    // coroutine delay() is fully suspended by Android Doze mode; a PARTIAL_WAKE_LOCK +
+    // setExactAndAllowWhileIdle alarm is the only mechanism that fires through deep Doze.
+    private var usqueDozeReceiver: android.content.BroadcastReceiver? = null
+
+    private fun scheduleUsqueDozeAlarm() {
+        val am = getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+        val intent = android.content.Intent(ACTION_USQUE_DOZE_WATCHDOG).setPackage(packageName)
+        val pi = android.app.PendingIntent.getBroadcast(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        // setExactAndAllowWhileIdle fires even during Doze; Android throttles it to ≥9 min cadence
+        am.setExactAndAllowWhileIdle(
+            android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            android.os.SystemClock.elapsedRealtime() + USQUE_DOZE_ALARM_INTERVAL_MS,
+            pi
+        )
+    }
+
+    private fun cancelUsqueDozeAlarm() {
+        val am = getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+        val intent = android.content.Intent(ACTION_USQUE_DOZE_WATCHDOG).setPackage(packageName)
+        val pi = android.app.PendingIntent.getBroadcast(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        am.cancel(pi)
+    }
+
     private val flowDispatcher by lazy { Daemons.ioDispatcher("flow", Mark(),  vpnScope) }
     private val inflowDispatcher by lazy { Daemons.ioDispatcher("inflow", Mark(), vpnScope) }
     private val preflowDispatcher by lazy { Daemons.ioDispatcher("preflow", PreMark(), vpnScope) }
@@ -275,6 +305,13 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         private const val RECONCILE_WITH_VPN_ROUTES = false
 
         const val FIRESTACK_MUST_DUP_TUNFD = true
+
+        // Sprint 20 Bug 1: Doze-proof watchdog alarm action.
+        // coroutine delay() is suspended by Android Doze; this alarm fires even in deep Doze
+        // (at most once per ~9 min per Android OS throttle) to check WARP tunnel liveness.
+        const val ACTION_USQUE_DOZE_WATCHDOG = "com.celzero.bravedns.USQUE_DOZE_WATCHDOG"
+        // Doze watchdog alarm interval: 9 min matches Android's minimum setExactAndAllowWhileIdle cadence
+        private const val USQUE_DOZE_ALARM_INTERVAL_MS = 9 * 60 * 1000L
     }
 
     private var lastSubscriptionCheckTime: Long = 0
@@ -1564,16 +1601,50 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                       if (persistentState.usqueEnabled && UsqueManager.isRunning()) {
                           if (!UsqueManager.probeUsqueLiveness()) {
                               Logger.w(LOG_TAG_VPN, "usque: watchdog liveness probe failed — restarting")
+                              // Sprint 20 Bug 2: pre-flush stale DoH HTTP/2 connection to port 40000
+                              // BEFORE stopSocksProxy makes the port dark (~200ms gap). Without this
+                              // the cached HTTP/2 conn receives "use of closed network connection"
+                              // which breaks all DNS queries during the restart window.
+                              refreshResolvers()
                               UsqueManager.startSocksProxy(applicationContext)
                               usqueLastWatchdogRestartMs = System.currentTimeMillis()
-                              // Sprint 15: flush stale DoH HTTP/2 connections from the old usque
-                              // process. Without this the Go DNS transport holds zombie connections
-                              // for ~30s, blocking all DNS resolution even though usque is back up.
+                              // Sprint 15: post-start flush so DNS transport picks up the new port
                               refreshResolvers()
                           }
                       }
                   }
               }
+
+              // Sprint 20 Bug 1: coroutine delay() is fully suspended by Android Doze mode.
+              // The watchdog above went silent for 2.6 hours because Doze froze the delay().
+              // Register a dynamic BroadcastReceiver + AlarmManager.setExactAndAllowWhileIdle()
+              // alarm that fires through deep Doze (at OS-throttled cadence of ≥9 min) and runs
+              // the same liveness check so the tunnel is never stuck dead for hours while asleep.
+              if (usqueDozeReceiver == null) {
+                  usqueDozeReceiver = object : android.content.BroadcastReceiver() {
+                      override fun onReceive(ctx: android.content.Context, intent: android.content.Intent) {
+                          if (intent.action != ACTION_USQUE_DOZE_WATCHDOG) return
+                          if (!persistentState.usqueEnabled) return
+                          Logger.i(LOG_TAG_VPN, "usque: Doze alarm fired — checking liveness")
+                          io("usqueDozeCheck") {
+                              if (!UsqueManager.probeUsqueLiveness()) {
+                                  Logger.w(LOG_TAG_VPN, "usque: Doze watchdog probe failed — restarting")
+                                  refreshResolvers() // Bug 2: pre-flush before port goes dark
+                                  UsqueManager.startSocksProxy(applicationContext)
+                                  usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                                  refreshResolvers() // post-start flush
+                              }
+                              // Reschedule next Doze alarm regardless (keeps the chain alive)
+                              scheduleUsqueDozeAlarm()
+                          }
+                      }
+                  }
+                  registerReceiver(
+                      usqueDozeReceiver,
+                      android.content.IntentFilter(ACTION_USQUE_DOZE_WATCHDOG)
+                  )
+              }
+              scheduleUsqueDozeAlarm()
           }
     }
 
@@ -3091,9 +3162,12 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                         io("usqueNetworkAdapt") {
                             kotlinx.coroutines.delay(1500L)
                             Logger.i(LOG_TAG_VPN, "usque: restarting for direct interface switch (WiFi↔LTE)")
+                            // Sprint 20 Bug 2: pre-flush stale DoH HTTP/2 conn before port 40000
+                            // goes dark so "use of closed network connection" never surfaces
+                            refreshResolvers()
                             usqueLastWatchdogRestartMs = System.currentTimeMillis()
                             UsqueManager.startSocksProxy(applicationContext)
-                            refreshResolvers() // Sprint 15: flush stale DoH connections
+                            refreshResolvers() // post-start flush
                         }
                     }
                     prevSz > 0 && currSz == 0 -> {
@@ -3104,12 +3178,21 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                     prevSz == 0 && currSz > 0 && usqueNetworkLost -> {
                         // network recovered after a gap (LTE appeared after WiFi drop)
                         usqueNetworkLost = false
-                        io("usqueNetworkAdapt") {
-                            kotlinx.coroutines.delay(1500L)
-                            Logger.i(LOG_TAG_VPN, "usque: network recovered after loss, restarting WARP tunnel")
-                            usqueLastWatchdogRestartMs = System.currentTimeMillis()
-                            UsqueManager.startSocksProxy(applicationContext)
-                            refreshResolvers() // Sprint 15: flush stale DoH connections
+                        // Sprint 20 Bug 3: 4 rapid VPN fd-swaps in 9s triggered restarts #7–#9
+                        // because this branch had no debounce guard. The direct-handoff branch
+                        // above guards with msSinceWatchdog > 5_000L; apply the same guard here
+                        // so back-to-back lost/recovered cycles don't cascade into restart storms.
+                        if (msSinceWatchdog > 5_000L) {
+                            io("usqueNetworkAdapt") {
+                                kotlinx.coroutines.delay(1500L)
+                                Logger.i(LOG_TAG_VPN, "usque: network recovered after loss, restarting WARP tunnel")
+                                refreshResolvers() // Sprint 20 Bug 2: pre-flush before port goes dark
+                                usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                                UsqueManager.startSocksProxy(applicationContext)
+                                refreshResolvers() // post-start flush
+                            }
+                        } else {
+                            Logger.i(LOG_TAG_VPN, "usque: network recovered but skipping restart — within ${5_000 - msSinceWatchdog}ms debounce window (Bug3 guard)")
                         }
                     }
                 }
@@ -3568,9 +3651,15 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     }
 
     override fun onDestroy() {
-        UsqueManager.stopSocksProxy()   // ← ADD THIS LINE
+        UsqueManager.stopSocksProxy()
         usqueWatchdogJob?.cancel()
-          usqueWatchdogJob = null
+        usqueWatchdogJob = null
+        // Sprint 20 Bug 1: cancel the Doze-proof alarm and unregister its receiver
+        cancelUsqueDozeAlarm()
+        try {
+            usqueDozeReceiver?.let { unregisterReceiver(it) }
+        } catch (_: IllegalArgumentException) {}
+        usqueDozeReceiver = null
         // ... rest of existing onDestroy code unchanged ...
         if (persistentState.firewallBubbleEnabled) {
             BubbleHelper.dismissBubble(this)
@@ -6153,6 +6242,22 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
     fun screenUnlock() {
         io("screenUnlock") {
+            // Sprint 20 Bug 1: After deep Doze the coroutine watchdog delay() may have been
+            // suspended for hours (confirmed 2.6 h in bug report). Run an immediate WARP liveness
+            // check on every screen unlock so the tunnel is validated/restarted the moment the
+            // user picks up the phone — before they notice "no connection".
+            if (persistentState.usqueEnabled) {
+                if (!UsqueManager.probeUsqueLiveness()) {
+                    Logger.w(LOG_TAG_VPN, "usque: screenUnlock liveness probe failed — restarting after Doze")
+                    refreshResolvers() // Bug 2: pre-flush stale DoH conn before port goes dark
+                    UsqueManager.startSocksProxy(applicationContext)
+                    usqueLastWatchdogRestartMs = System.currentTimeMillis()
+                    refreshResolvers() // post-start flush
+                } else {
+                    Logger.d(LOG_TAG_VPN, "usque: screenUnlock liveness probe passed — tunnel alive")
+                }
+            }
+
             // initiate wireguard ping for one wg, catch-all, hop proxies
             val proxies = WireguardManager.getActiveConfigs()
             Logger.i(LOG_TAG_VPN, "unlock: initiate ping for one-wg/catchall/hop/rpn proxies")
