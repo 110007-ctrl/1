@@ -28,13 +28,11 @@ import androidx.work.WorkerParameters
 import com.celzero.bravedns.backup.BackupHelper.Companion.DATA_BUILDER_RESTORE_URI
 import com.celzero.bravedns.backup.BackupHelper.Companion.METADATA_FILENAME
 import com.celzero.bravedns.backup.BackupHelper.Companion.SHARED_PREFS_BACKUP_FILE_NAME
-import com.celzero.bravedns.backup.BackupHelper.Companion.TEMP_WG_DIR
 import com.celzero.bravedns.backup.BackupHelper.Companion.VERSION
 import com.celzero.bravedns.backup.BackupHelper.Companion.deleteResidue
 import com.celzero.bravedns.backup.BackupHelper.Companion.getTempDir
 import com.celzero.bravedns.backup.BackupHelper.Companion.stopVpn
 import com.celzero.bravedns.backup.BackupHelper.Companion.unzip
-import com.celzero.bravedns.data.AppConfig
 import com.celzero.bravedns.database.AppDatabase
 import com.celzero.bravedns.database.LogDatabase
 import com.celzero.bravedns.service.PersistentState
@@ -85,7 +83,6 @@ class RestoreAgent(val context: Context, workerParams: WorkerParameters) :
 
     private val logDatabase by inject<LogDatabase>()
     private val appDatabase by inject<AppDatabase>()
-    private val appConfig by inject<AppConfig>()
     private val persistentState by inject<PersistentState>()
 
     companion object {
@@ -159,16 +156,6 @@ class RestoreAgent(val context: Context, workerParams: WorkerParameters) :
             } else {
                 Logger.i(LOG_TAG_BACKUP_RESTORE, "database restored to the temp dir")
                 // proceed
-            }
-
-            // copy wireguard contents into temp_wg folder
-            // if wireguard copy failed, the proceed with cleanup
-            if (!restoreWireGuardFiles(tempDir)) {
-                Logger.w(LOG_TAG_BACKUP_RESTORE, "failed to restore wireguard files, return failure")
-                // clear WireGuard related entries from database
-                wireGuardCleanup()
-            } else {
-                Logger.i(LOG_TAG_BACKUP_RESTORE, "wireguard files restored to the temp dir")
             }
 
             // open log database if its not open
@@ -282,57 +269,6 @@ class RestoreAgent(val context: Context, workerParams: WorkerParameters) :
         return true
     }
 
-    private fun restoreWireGuardFiles(dir: File): Boolean {
-        if (!dir.exists()) {
-            // no files to restore
-            Logger.i(LOG_TAG_BACKUP_RESTORE, "no wireguard files to restore")
-            return true
-        }
-
-        // store the wireguard files in the temp_wireguard folder and then copy it to the wireguard
-        // folder during db updates, database update is handled in RefreshDatabase
-        // clear if temp_wireguard folder is already there if not, create the folder
-        val tempWgDir = File(context.filesDir, TEMP_WG_DIR)
-        if (tempWgDir.exists()) {
-            Logger.d(LOG_TAG_BACKUP_RESTORE, "$TEMP_WG_DIR folder exists, delete")
-            tempWgDir.deleteRecursively()
-        }
-
-        if (!tempWgDir.mkdirs()) {
-            Logger.w(LOG_TAG_BACKUP_RESTORE, "failed to create $TEMP_WG_DIR folder")
-            return false
-        }
-
-        // read the wireguard files from the temp dir and write it to the wireguard folder
-        val files = dir.listFiles()
-        if (files == null) {
-            Logger.w(LOG_TAG_BACKUP_RESTORE, "files to restore is empty, path: ${dir.path}")
-            return false
-        }
-        files.forEach { file ->
-            // if file name ends with .conf, then copy it to the wireguard folder
-            if (!file.name.endsWith(".conf")) {
-                Logger.d(LOG_TAG_BACKUP_RESTORE, "not wg file, file name: ${file.name}")
-                return@forEach
-            }
-
-            val currentWgFile = File(tempWgDir, file.name)
-            if (!Utilities.copy(file.path, currentWgFile.path)) {
-                Logger.w(
-                    LOG_TAG_BACKUP_RESTORE,
-                    "restore process, failure copying wireguard file: ${file.path} to ${currentWgFile.path}"
-                )
-                // no need to return false, proceed with the next file
-                // missing files database entry will be handled (deleted) in RefreshDatabase
-            } else {
-                Logger.i(
-                    LOG_TAG_BACKUP_RESTORE,
-                    "wireguard file: ${file.name} backed up from ${file.path} to ${currentWgFile.path}"
-                )
-            }
-        }
-        return true
-    }
 
     private fun updateLatestVersion() {
         if (isNewVersion()) {
@@ -397,13 +333,6 @@ class RestoreAgent(val context: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun wireGuardCleanup() {
-        if (appConfig.isWireGuardEnabled()) {
-            Logger.i(LOG_TAG_BACKUP_RESTORE, "wireGuard is enabled, reset the wireguard entries")
-            appConfig.removeAllProxies()
-        }
-        // cleaning up the wireguard entries are handled in RefreshDatabase
-    }
 
     private fun isMetadataCompatible(tempDirectory: String?): Boolean {
 
