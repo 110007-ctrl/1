@@ -1639,9 +1639,13 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                           }
                       }
                   }
-                  registerReceiver(
+                  // Android 13+ (API 33) requires RECEIVER_NOT_EXPORTED for non-system broadcast receivers.
+                  // Omitting this flag causes a SecurityException crash on targetSdk=33+ (confirmed BraveVPNService.onCreate).
+                  ContextCompat.registerReceiver(
+                      this,
                       usqueDozeReceiver,
-                      android.content.IntentFilter(ACTION_USQUE_DOZE_WATCHDOG)
+                      android.content.IntentFilter(ACTION_USQUE_DOZE_WATCHDOG),
+                      ContextCompat.RECEIVER_NOT_EXPORTED
                   )
               }
               scheduleUsqueDozeAlarm()
