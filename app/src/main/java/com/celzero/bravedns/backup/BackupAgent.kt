@@ -25,7 +25,6 @@ import androidx.core.net.toUri
 import androidx.preference.PreferenceManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.celzero.bravedns.backup.BackupHelper.Companion.BACKUP_WG_DIR
 import com.celzero.bravedns.backup.BackupHelper.Companion.CREATED_TIME
 import com.celzero.bravedns.backup.BackupHelper.Companion.DATA_BUILDER_BACKUP_URI
 import com.celzero.bravedns.backup.BackupHelper.Companion.METADATA_FILENAME
@@ -38,9 +37,7 @@ import com.celzero.bravedns.backup.BackupHelper.Companion.getFileNameFromPath
 import com.celzero.bravedns.backup.BackupHelper.Companion.getRethinkDatabase
 import com.celzero.bravedns.backup.BackupHelper.Companion.getTempDir
 import com.celzero.bravedns.backup.BackupHelper.Companion.startVpn
-import com.celzero.bravedns.service.EncryptedFileManager
 import com.celzero.bravedns.service.PersistentState
-import com.celzero.bravedns.service.WireguardManager
 import com.celzero.bravedns.util.Utilities
 import com.celzero.bravedns.util.Utilities.copyWithStream
 import org.koin.core.component.KoinComponent
@@ -124,10 +121,6 @@ class BackupAgent(val context: Context, workerParams: WorkerParameters) :
                 return false
             }
 
-            // no need to check the return value, we can proceed even if the wireguard config backup
-            // fails
-            backupWireGuardConfig(tempDir)
-
             processCompleted = createMetaData(tempDir)
 
             if (processCompleted) {
@@ -154,42 +147,6 @@ class BackupAgent(val context: Context, workerParams: WorkerParameters) :
         }
     }
 
-    private fun backupWireGuardConfig(tempDir: File): Boolean {
-        // get all the wireguard config from the database,
-        // loop through them and get the path from the database
-        // create a copy of a encrypted file to normal file in the temp dir
-        // add the file to the zip list
-
-        Logger.d(LOG_TAG_BACKUP_RESTORE, "init backup wireguard configs")
-        val dir = File(tempDir, BACKUP_WG_DIR)
-        if (!dir.exists()) {
-            Logger.d(LOG_TAG_BACKUP_RESTORE, "creating wireguard backup dir, ${dir.path}")
-            dir.mkdirs()
-        }
-
-        try {
-            val mappings = WireguardManager.getAllMappings()
-            mappings.forEach { m ->
-                val file = File(m.configPath)
-                val content = EncryptedFileManager.read(context, file)
-                if (content.isNotEmpty()) {
-                    val tmpWgFile = File(dir, "${m.id}.conf")
-                    tmpWgFile.writer().use {
-                        writer -> writer.write(content)
-                        writer.flush()
-                    }
-                    filesPathToZip.add(tmpWgFile.absolutePath)
-                    Logger.v(LOG_TAG_BACKUP_RESTORE, "wg ${m.id}.conf added to backup, path: ${tmpWgFile.path}")
-                } else {
-                    Logger.w(LOG_TAG_BACKUP_RESTORE, "empty config for ${m.id}, ${m.configPath}")
-                }
-            }
-            return true
-        } catch (e: Exception) {
-            Logger.w(LOG_TAG_BACKUP_RESTORE, "err while backing up wg config, ${e.message}", e)
-        }
-        return false
-    }
 
     private fun createMetaData(backupDir: File): Boolean {
         Logger.d(LOG_TAG_BACKUP_RESTORE, "creating meta data file, path: ${backupDir.path}")
