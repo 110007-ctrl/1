@@ -204,8 +204,11 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     @Volatile private var usqueNetworkLost = false // Sprint 17: WiFi→void→LTE handoff tracking
 
     // Sprint 20 Bug 1: Doze-proof alarm watchdog receiver and helpers.
-    // coroutine delay() is fully suspended by Android Doze mode; a PARTIAL_WAKE_LOCK +
-    // setExactAndAllowWhileIdle alarm is the only mechanism that fires through deep Doze.
+    // setAndAllowWhileIdle fires through deep Doze without requiring SCHEDULE_EXACT_ALARM
+    // or USE_EXACT_ALARM. setExactAndAllowWhileIdle was crashing on Android 12+ with a
+    // SecurityException when that permission is absent (tombstone 1778876236727,
+    // BraveVPNService.kt:219). Precision is irrelevant for a liveness watchdog; the OS
+    // throttle (~9 min minimum cadence) is acceptable.
     private var usqueDozeReceiver: android.content.BroadcastReceiver? = null
 
     private fun scheduleUsqueDozeAlarm() {
@@ -215,8 +218,10 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             this, 0, intent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
-        // setExactAndAllowWhileIdle fires even during Doze; Android throttles it to ≥9 min cadence
-        am.setExactAndAllowWhileIdle(
+        // Use setAndAllowWhileIdle — fires through Doze, no special permission needed.
+        // DO NOT change back to setExactAndAllowWhileIdle without declaring
+        // SCHEDULE_EXACT_ALARM in AndroidManifest and gating on canScheduleExactAlarms().
+        am.setAndAllowWhileIdle(
             android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
             android.os.SystemClock.elapsedRealtime() + USQUE_DOZE_ALARM_INTERVAL_MS,
             pi
