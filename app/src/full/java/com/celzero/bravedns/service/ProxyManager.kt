@@ -337,8 +337,7 @@ object ProxyManager : KoinComponent {
 
     private fun isValidProxyPrefix(pid: String): Boolean {
         if (pid == ID_NONE || pid == "") return false
-        return
-            pid.startsWith(ID_WG_BASE) ||
+        return pid.startsWith(ID_WG_BASE) ||
             pid.startsWith(ID_TCP_BASE) ||
             pid.startsWith(ID_S5_BASE) ||
             pid.startsWith(ID_HTTP_BASE) ||
