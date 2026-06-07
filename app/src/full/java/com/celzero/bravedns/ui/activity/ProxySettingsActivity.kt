@@ -874,14 +874,12 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
         val canEnableProxy = appConfig.canEnableProxy()
 
         if (canEnableProxy) {
-            b.settingsActivityOrbotContainer.alpha = 1f
             b.settingsActivityVpnLockdownDesc.visibility = View.GONE
             b.settingsActivityWireguardContainer.alpha = 1f
             b.settingsActivitySocks5Rl.alpha = 1f
             b.settingsActivityHttpProxyContainer.alpha = 1f
             b.wgRefresh.visibility = View.VISIBLE
         } else {
-            b.settingsActivityOrbotContainer.alpha = 0.5f
             b.settingsActivityWireguardContainer.alpha = 0.5f
             b.settingsActivityVpnLockdownDesc.visibility = View.VISIBLE
             b.settingsActivitySocks5Rl.alpha = 0.5f
@@ -891,8 +889,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
 
         b.settingsActivityWireguardImg.isEnabled = canEnableProxy
         b.settingsActivityWireguardContainer.isEnabled = canEnableProxy
-        b.settingsActivityOrbotImg.isEnabled = canEnableProxy
-        b.settingsActivityOrbotContainer.isEnabled = canEnableProxy
         b.settingsActivitySocks5Switch.isEnabled = canEnableProxy
         b.settingsActivityHttpProxySwitch.isEnabled = canEnableProxy
     }
