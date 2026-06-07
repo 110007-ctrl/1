@@ -25,7 +25,6 @@ import com.celzero.bravedns.database.AppInfoRepository
 import com.celzero.bravedns.database.AppInfoRepository.Companion.NO_PACKAGE_PREFIX
 import com.celzero.bravedns.util.AndroidUidConfig
 import com.celzero.bravedns.util.Constants.Companion.RETHINK_PACKAGE
-import com.celzero.bravedns.util.OrbotHelper
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

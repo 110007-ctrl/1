@@ -59,9 +59,7 @@ import com.celzero.bravedns.service.UsqueManager
 import com.celzero.bravedns.service.VpnController
 import com.celzero.bravedns.service.WireguardManager
 import com.celzero.bravedns.service.WireguardManager.WG_UPTIME_THRESHOLD
-import com.celzero.bravedns.ui.bottomsheet.OrbotBottomSheet
 import com.celzero.bravedns.util.Constants
-import com.celzero.bravedns.util.OrbotHelper
 import com.celzero.bravedns.util.Themes.Companion.getCurrentTheme
 import com.celzero.bravedns.util.UIUtils
 import com.celzero.bravedns.util.UIUtils.openUrl
@@ -86,7 +84,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
 
     private val persistentState by inject<PersistentState>()
     private val appConfig by inject<AppConfig>()
-    private val orbotHelper by inject<OrbotHelper>()
     private val eventLogger by inject<EventLogger>()
     private lateinit var animation: Animation
 
@@ -143,7 +140,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
 
     override fun onResume() {
         super.onResume()
-        refreshOrbotUi()
         handleProxyUi()
         displayWireguardUi()
         // If WARP was enabled but the process died (app killed, VPN restarted),
@@ -185,7 +181,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
     private fun initView() {
         b.settingsActivityHttpProxyProgress.visibility = View.GONE
         b.settingsWireguardTitle.text = getString(R.string.lbl_wireguard).lowercase()
-        b.orbotTitle.text = getString(R.string.orbot).lowercase()
         b.otherTitle.text = getString(R.string.category_name_others).lowercase()
 
         b.rpnTitle.visibility = View.GONE
@@ -291,9 +286,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
 
         // Switch listener is attached (and re-attached safely) in updateWarpUi()
         // ===== END WARP SECTION =====
-
-        b.settingsActivityOrbotImg.setOnClickListener { handleOrbotUiEvent() }
-        b.settingsActivityOrbotContainer.setOnClickListener { handleOrbotUiEvent() }
         b.settingsActivityWireguardContainer.setOnClickListener { openWireguardActivity() }
         b.settingsActivityWireguardImg.setOnClickListener { openWireguardActivity() }
 
@@ -515,100 +507,9 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
             showToastUiCentered(this, getString(R.string.dc_refresh_toast), Toast.LENGTH_SHORT)
         }
     }
-
-    private fun showOrbotInstallDialog() {
-        val builder = MaterialAlertDialogBuilder(this, R.style.App_Dialog_NoDim)
-        builder.setTitle(R.string.orbot_install_dialog_title)
-        builder.setMessage(R.string.orbot_install_dialog_message)
-        builder.setPositiveButton(getString(R.string.orbot_install_dialog_positive)) { _, _ ->
-            handleOrbotInstall()
-        }
-        builder.setNegativeButton(getString(R.string.lbl_dismiss)) { dialog, _ ->
-            dialog.dismiss()
-        }
-        builder.setNeutralButton(getString(R.string.orbot_install_dialog_neutral)) { _, _ ->
-            launchOrbotWebsite()
-        }
-        builder.create().show()
-    }
-
-    private fun launchOrbotWebsite() {
-        openUrl(this, getString(R.string.orbot_website_link))
-    }
-
-    private fun handleOrbotInstall() {
-        startOrbotInstallActivity(orbotHelper.getIntentForDownload())
-    }
-
-    private fun startOrbotInstallActivity(intent: Intent?) {
-        if (intent == null) {
-            showToastUiCentered(
-                this,
-                getString(R.string.orbot_install_activity_error),
-                Toast.LENGTH_SHORT
-            )
-            return
-        }
-        try {
-            startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            showToastUiCentered(
-                this,
-                getString(R.string.orbot_install_activity_error),
-                Toast.LENGTH_SHORT
-            )
-        }
-    }
-
-    private fun handleOrbotUiEvent() {
-        io {
-            val isOrbotInstalled = FirewallManager.isOrbotInstalled()
-            uiCtx {
-                if (!isOrbotInstalled) {
-                    showOrbotInstallDialog()
-                    return@uiCtx
-                }
-
-                if (!appConfig.canEnableOrbotProxy()) {
-                    val s =
-                        persistentState.proxyProvider.lowercase().replaceFirstChar(Char::titlecase)
-                    if (s.lowercase() == AppConfig.ProxyProvider.CUSTOM.name.lowercase()) {
-                        showToastUiCentered(
-                            this,
-                            getString(R.string.settings_orbot_disabled_error),
-                            Toast.LENGTH_SHORT
-                        )
-                    } else {
-                        showToastUiCentered(
-                            this,
-                            getString(R.string.settings_socks5_disabled_error, s),
-                            Toast.LENGTH_SHORT
-                        )
-                    }
-                    return@uiCtx
-                }
-
-                openOrbotBottomSheet()
-            }
-        }
-    }
-
     private fun openWireguardActivity() {
         val intent = Intent(this, WgMainActivity::class.java)
         startActivity(intent)
-    }
-
-    private fun openOrbotBottomSheet() {
-        if (!VpnController.hasTunnel()) {
-            showToastUiCentered(
-                this,
-                getString(R.string.settings_socks5_vpn_disabled_error),
-                Toast.LENGTH_SHORT
-            )
-            return
-        }
-        val bottomSheetFragment = OrbotBottomSheet()
-        bottomSheetFragment.show(this.supportFragmentManager, bottomSheetFragment.tag)
     }
 
     private fun displayHttpProxyUi() {
@@ -809,63 +710,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
             }
         }
     }
-
-    private fun refreshOrbotUi() {
-        io {
-            val isOrbotInstalled = FirewallManager.isOrbotInstalled()
-            val isOrbotDns = appConfig.isOrbotDns()
-            uiCtx {
-                if (!isOrbotInstalled) {
-                    b.settingsActivityHttpOrbotDesc.text =
-                        getString(R.string.settings_orbot_install_desc)
-                    return@uiCtx
-                }
-
-                if (!appConfig.isOrbotProxyEnabled()) {
-                    b.settingsActivityHttpOrbotDesc.text = getString(R.string.orbot_bs_status_4)
-                    return@uiCtx
-                }
-
-                when (appConfig.getProxyType()) {
-                    AppConfig.ProxyType.HTTP.name -> {
-                        b.settingsActivityHttpOrbotDesc.text =
-                            getString(R.string.orbot_bs_status_2)
-                    }
-                    AppConfig.ProxyType.SOCKS5.name -> {
-                        b.settingsActivityHttpOrbotDesc.text =
-                            if (isOrbotDns) {
-                                getString(
-                                    R.string.orbot_bs_status_1,
-                                    getString(R.string.orbot_status_arg_3)
-                                )
-                            } else {
-                                getString(
-                                    R.string.orbot_bs_status_1,
-                                    getString(R.string.orbot_status_arg_2)
-                                )
-                            }
-                    }
-                    AppConfig.ProxyType.HTTP_SOCKS5.name -> {
-                        b.settingsActivityHttpOrbotDesc.text =
-                            if (isOrbotDns) {
-                                getString(
-                                    R.string.orbot_bs_status_3,
-                                    getString(R.string.orbot_status_arg_3)
-                                )
-                            } else {
-                                getString(
-                                    R.string.orbot_bs_status_3,
-                                    getString(R.string.orbot_status_arg_2)
-                                )
-                            }
-                    }
-                    else -> {
-                        b.settingsActivityHttpOrbotDesc.text =
-                            getString(R.string.orbot_bs_status_4)
-                    }
-                }
-            }
-        }
     }
 
     private fun showSocks5ProxyDialog(

@@ -109,7 +109,6 @@ import com.celzero.bravedns.util.InternetProtocol
 import com.celzero.bravedns.util.KnownPorts
 import com.celzero.bravedns.util.MemoryUtils
 import com.celzero.bravedns.util.NotificationActionType
-import com.celzero.bravedns.util.OrbotHelper
 import com.celzero.bravedns.util.Protocol
 import com.celzero.bravedns.util.ResourceRecordTypes
 import com.celzero.bravedns.util.UIUtils.getAccentColor
@@ -328,7 +327,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     private val rand: Random = Random
 
     private val appConfig by inject<AppConfig>()
-    private val orbotHelper by inject<OrbotHelper>()
     private val persistentState by inject<PersistentState>()
     private val rdb by inject<RefreshDatabase>()
     private val netLogTracker by inject<NetLogTracker>()
@@ -338,7 +336,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
     @Volatile
     var accessibilityHearbeatTimestamp: Long = INIT_TIME_MS
-    private var settingUpOrbot: AtomicBoolean = AtomicBoolean(false)
 
     private lateinit var notificationManager: NotificationManager
     private lateinit var activityManager: ActivityManager
@@ -347,7 +344,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     private var keyguardManager: KeyguardManager? = null
 
     private lateinit var appInfoObserver: Observer<Collection<AppInfo>>
-    private lateinit var orbotStartStatusObserver: Observer<Boolean>
     private lateinit var dnscryptRelayObserver: Observer<PersistentState.DnsCryptRelayDetails>
     private lateinit var blockedConnsObserver: Observer<Int>
 
@@ -685,10 +681,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             val connectionStatus = FirewallManager.connectionStatus(uid)
             val isTempAllowed = FirewallManager.isTempAllowed(uid)
 
-            if (allowOrbot(uid)) {
-                return FirewallRuleset.RULE9B
-            }
-
             if (unknownAppBlocked(uid)) {
                 logd("firewall($connId): unknown app blocked, $uid")
                 return FirewallRuleset.RULE5
@@ -950,11 +942,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         }
 
         return persistentState.getBlockHttpConnections()
-    }
-
-    private suspend fun allowOrbot(uid: Int): Boolean {
-        return settingUpOrbot.get() &&
-                OrbotHelper.ORBOT_PACKAGE_NAME == FirewallManager.getPackageNameByUid(uid)
     }
 
     private fun dnsProxied(port: Int): Boolean {
@@ -1503,11 +1490,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             }
         }
 
-        if (!vpnLockdown && appConfig.isOrbotProxyEnabled() && isExcludeProxyApp(getString(R.string.orbot))) {
-            Logger.i(LOG_TAG_VPN, "exclude orbot app")
-            addDisallowedApplication(builder, OrbotHelper.ORBOT_PACKAGE_NAME)
-        }
-
         if (appConfig.isCustomHttpProxyEnabled()) {
             // For HTTP proxy if there is a app selected, add that app in excluded list
             val httpProxyEndpoint = appConfig.getConnectedHttpProxy()
@@ -1679,8 +1661,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         appInfoObserver = makeAppInfoObserver()
         FirewallManager.getApplistObserver().observeForever(appInfoObserver)
         persistentState.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
-        orbotStartStatusObserver = makeOrbotStartStatusObserver()
-        persistentState.orbotConnectionStatus.observeForever(orbotStartStatusObserver)
         dnscryptRelayObserver = makeDnscryptRelayObserver()
         persistentState.dnsCryptRelays.observeForever(dnscryptRelayObserver)
         Logger.i(LOG_TAG_VPN, "observe pref, dnscrypt relay, app list changes")
@@ -1731,10 +1711,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                 )
             }
         }
-    }
-
-    private fun makeOrbotStartStatusObserver(): Observer<Boolean> {
-        return Observer { settingUpOrbot.set(it) }
     }
 
     private fun isAppLockEnabled(): Boolean {
@@ -1999,8 +1975,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             // see restartVpn and updateTun which expect this to be the case
             persistentState.setVpnEnabled(true)
 
-            startOrbotAsyncIfNeeded()
-
             // If WARP was enabled when the app/VPN was previously killed, the libusque.so
             // process is gone (in-memory ref lost) but usqueEnabled is still true in prefs.
             // Restart synchronously (within this coroutine) BEFORE onVpnStart/newTunnelOptions,
@@ -2247,23 +2221,11 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         return minMtu
     }
 
-    private fun startOrbotAsyncIfNeeded() {
-        if (!appConfig.isOrbotProxyEnabled()) return
-
-        io("startOrbot") { orbotHelper.startOrbot(appConfig.getProxyType()) }
-    }
 
     private fun unobserveAppInfos() {
         // fix for issue #648 (UninitializedPropertyAccessException)
         if (this::appInfoObserver.isInitialized) {
             FirewallManager.getApplistObserver().removeObserver(appInfoObserver)
-        }
-    }
-
-    private fun unobserveOrbotStartStatus() {
-        // fix for issue #648 (UninitializedPropertyAccessException)
-        if (this::orbotStartStatusObserver.isInitialized) {
-            persistentState.orbotConnectionStatus.removeObserver(orbotStartStatusObserver)
         }
     }
 
@@ -2759,14 +2721,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
             AppConfig.ProxyProvider.WIREGUARD -> {
                 // no need to set proxy for wireguard, as WireguardManager handles it
-            }
-
-            AppConfig.ProxyProvider.ORBOT -> {
-                // update orbot config, its treated as SOCKS5 or HTTP proxy internally
-                // orbot proxy requires app to be excluded from vpn, so restart vpn
-                val reason = "orbotProxy: ${appConfig.isOrbotProxyEnabled()}"
-                vpnRestartTrigger.value = reason
-                vpnAdapter?.setCustomProxy(tunProxyMode)
             }
 
             AppConfig.ProxyProvider.CUSTOM -> {
@@ -3676,7 +3630,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
 
         try {
             unregisterAccessibilityServiceState()
-            orbotHelper.unregisterReceiver()
             unregisterUserPresentReceiver()
         } catch (e: IllegalArgumentException) {
             Logger.w(LOG_TAG_VPN, "Unregister receiver error: ${e.message}")
@@ -3685,8 +3638,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         stopPauseTimer()
         // reset the underlying networks
         underlyingNetworks = null
-
-        unobserveOrbotStartStatus()
         unobserveAppInfos()
         unobserveDnsRelay()
         persistentState.sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
@@ -5542,23 +5493,13 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         if (!appConfig.getBraveMode().isDnsFirewallMode()) {
             return false
         }
-        // check if the app is selected to forward dns proxy, orbot, socks5, http proxy
+        // check if the app is selected to forward dns proxy, socks5, http proxy
         if (
             !appConfig.isCustomSocks5Enabled() &&
             !appConfig.isCustomHttpProxyEnabled() &&
             !appConfig.isDnsProxyActive() &&
-            !appConfig.isOrbotProxyEnabled()
         ) {
             return false
-        }
-
-        if (appConfig.isOrbotProxyEnabled()) {
-            val endpoint = appConfig.getConnectedOrbotProxy()
-            val packageName = FirewallManager.getPackageNameByUid(uid)
-            if (endpoint?.proxyAppName == packageName) {
-                logd("flow/inflow: orbot enabled for $packageName, handling as spl app")
-                return true
-            }
         }
 
         if (appConfig.isCustomSocks5Enabled()) {
@@ -5671,31 +5612,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             logd("flow/inflow: no proxy/dnsproxy enabled, returning Ipn.Base, $connId, $uid")
             return persistAndConstructFlowResponse(connTracker, baseOrExit, connId, uid)
         }
-
-        if (appConfig.isOrbotProxyEnabled()) {
-            val endpoint = appConfig.getConnectedOrbotProxy()
-            val packageName = FirewallManager.getPackageNameByUid(uid)
-            if (endpoint?.proxyAppName == packageName) {
-                val pid = if (persistentState.autoProxyEnabled) Backend.Auto else Backend.Exit
-                logd("flow/inflow: orbot $pid for $packageName, $connId, $uid")
-                return persistAndConstructFlowResponse(connTracker, pid, connId, uid)
-            }
-
-            val activeId = ProxyManager.getProxyIdForApp(uid)
-            if (!activeId.contains(ProxyManager.ID_ORBOT_BASE)) {
-                Logger.e(LOG_TAG_VPN, "flow/inflow: orbot proxy is enabled but app is not included")
-                // pass-through
-            } else {
-                logd("flow/inflow: orbot proxy for $uid, $connId")
-                return persistAndConstructFlowResponse(
-                    connTracker,
-                    ProxyManager.ID_ORBOT_BASE,
-                    connId,
-                    uid
-                )
-            }
-        }
-
         // chose socks5 proxy over http proxy
         if (appConfig.isCustomSocks5Enabled()) {
             val endpoint = appConfig.getSocks5ProxyDetails()

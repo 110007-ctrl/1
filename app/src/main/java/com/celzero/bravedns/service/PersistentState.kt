@@ -195,8 +195,7 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
     // user selected proxy type (e.g., http, socks5)
     var proxyType by
         stringPref("proxy_proxytype").withDefault<String>(AppConfig.ProxyType.NONE.name)
-
-    // user selected proxy provider, as of now two providers (custom, orbot)
+    // user selected proxy provider (custom, tcp, wireguard)
     var proxyProvider by
         stringPref("proxy_proxyprovider").withDefault<String>(AppConfig.ProxyProvider.NONE.name)
 
@@ -457,8 +456,6 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
 
     // global lockdown for wireguard proxy
     var wgGlobalLockdown by booleanPref("wg_global_lockdown").withDefault<Boolean>(false)
-
-    var orbotConnectionStatus: MutableLiveData<Boolean> = MutableLiveData()
     var vpnEnabledLiveData: MutableLiveData<Boolean> = MutableLiveData()
     var universalRulesCount: MutableLiveData<Int> = MutableLiveData()
     private var proxyStatus: MutableLiveData<Int> = MutableLiveData()
@@ -600,12 +597,7 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
                 AppConfig.ProxyProvider.WIREGUARD -> {
                     R.string.lbl_wireguard
                 }
-                AppConfig.ProxyProvider.ORBOT -> {
-                    R.string.orbot
-                }
-                AppConfig.ProxyProvider.TCP -> {
-                    R.string.orbot_socks5
-                }
+                AppConfig.ProxyProvider.TCP -> {                }
                 AppConfig.ProxyProvider.CUSTOM -> {
                     val type = AppConfig.ProxyType.of(proxyType)
                     when (type) {

@@ -872,12 +872,7 @@ class GoVpnAdapter : KoinComponent {
                 Logger.e(LOG_TAG_VPN, "$TAG connect-tunnel: err empty socks5 url")
                 return
             }
-            val id =
-                if (tunProxyMode.isTunProxyOrbot()) {
-                    ProxyManager.ID_ORBOT_BASE
-                } else {
-                    ProxyManager.ID_S5_BASE
-                }
+            val id = ProxyManager.ID_S5_BASE
             val res = getProxies()?.addProxy(id.togs(), url.togs())
             Logger.i(LOG_TAG_VPN, "$TAG socks5 set with url($id): $url, success? ${res != null}")
             logEvent(
@@ -1114,12 +1109,7 @@ class GoVpnAdapter : KoinComponent {
         val socksEnabled = AppConfig.ProxyType.of(appConfig.getProxyType()).isSocks5Enabled()
         if (!socksEnabled) return
 
-        val socks5: ProxyEndpoint? =
-            if (tunProxyMode.isTunProxyOrbot()) {
-                appConfig.getConnectedOrbotProxy()
-            } else {
-                appConfig.getSocks5ProxyDetails()
-            }
+        val socks5: ProxyEndpoint? = appConfig.getSocks5ProxyDetails()
         if (socks5 == null) {
             Logger.w(
                 LOG_TAG_VPN,
@@ -1153,35 +1143,20 @@ class GoVpnAdapter : KoinComponent {
 
         try {
             val endpoint: ProxyEndpoint
-            val id =
-                if (tunProxyMode.isTunProxyOrbot()) {
-                    val orbotEndpoint = appConfig.getOrbotHttpEndpoint()
-                    if (orbotEndpoint == null) {
-                        Logger.e(LOG_TAG_VPN, "$TAG could not fetch Orbot HTTP endpoint for proxyMode: $tunProxyMode")
-                        return
-                    }
-                    endpoint = orbotEndpoint
-                    ProxyManager.ID_ORBOT_BASE
-                } else {
-                    val httpEndpoint = appConfig.getHttpProxyDetails()
+            val httpEndpoint = appConfig.getHttpProxyDetails()
                     if (httpEndpoint == null) {
                         Logger.e(LOG_TAG_VPN, "$TAG could not fetch http proxy details for proxyMode: $tunProxyMode")
                         return
                     }
                     endpoint = httpEndpoint
-                    ProxyManager.ID_HTTP_BASE
-                }
+                    val id = ProxyManager.ID_HTTP_BASE
             val httpProxyUrl = endpoint.proxyIP ?: return
 
             val p = getProxies()?.addProxy(id.togs(), httpProxyUrl.togs())
             logEvent(Severity.LOW, "set http proxy", "set http proxy with id: $id, url: $httpProxyUrl")
             Logger.i(LOG_TAG_VPN, "$TAG http proxy set, url: $httpProxyUrl, success? ${p != null}")
         } catch (e: Exception) {
-            if (tunProxyMode.isTunProxyOrbot()) {
-                appConfig.removeProxy(AppConfig.ProxyType.HTTP, AppConfig.ProxyProvider.ORBOT)
-            } else {
-                appConfig.removeProxy(AppConfig.ProxyType.HTTP, AppConfig.ProxyProvider.CUSTOM)
-            }
+            appConfig.removeProxy(AppConfig.ProxyType.HTTP, AppConfig.ProxyProvider.CUSTOM)
             logEvent(Severity.HIGH, "set http proxy error", "error setting http proxy, reason: ${e.message}")
             Logger.e(LOG_TAG_VPN, "$TAG error setting http proxy: ${e.message}", e)
         }

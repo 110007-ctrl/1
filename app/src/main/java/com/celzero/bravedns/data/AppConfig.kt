@@ -49,7 +49,6 @@ import com.celzero.bravedns.util.Constants
 import com.celzero.bravedns.util.Constants.Companion.MAX_ENDPOINT
 import com.celzero.bravedns.util.InternetProtocol
 import com.celzero.bravedns.util.InternetProtocol.Companion.getInternetProtocol
-import com.celzero.bravedns.util.OrbotHelper
 import com.celzero.bravedns.util.PcapMode
 import com.celzero.bravedns.util.Utilities.isAtleastQ
 import com.celzero.firestack.intra.Bridge
@@ -75,12 +74,9 @@ internal constructor(
     private var pcapFilePath: String = ""
     private var customSocks5Endpoint: ProxyEndpoint? = null
     private var customHttpEndpoint: ProxyEndpoint? = null
-    private var orbotEndpoint: ProxyEndpoint? = null
 
     companion object {
         private var connectedDns: MutableLiveData<String> = MutableLiveData()
-
-        private const val ORBOT_DNS = "Orbot"
 
         const val FALLBACK_DNS_IF_NET_DNS_EMPTY = "9.9.9.9,2620:fe::fe"
 
@@ -236,13 +232,8 @@ internal constructor(
         NONE,
         HTTPS,
         SOCKS5,
-        ORBOT,
-        TCP,
+            TCP,
         WIREGUARD;
-
-        fun isTunProxyOrbot(): Boolean {
-            return this == ORBOT
-        }
 
         fun isTunProxySocks5(): Boolean {
             return this == SOCKS5
@@ -262,12 +253,10 @@ internal constructor(
     }
 
     // Provider - Custom - SOCKS5, Http proxy setup.
-    // ORBOT - One touch Orbot integration.
     enum class ProxyProvider {
         NONE,
         CUSTOM,
-        ORBOT,
-        TCP,
+            TCP,
         WIREGUARD;
 
         fun isProxyProviderCustom(): Boolean {
@@ -276,10 +265,6 @@ internal constructor(
 
         fun isProxyProviderNone(): Boolean {
             return NONE.name == name
-        }
-
-        fun isProxyProviderOrbot(): Boolean {
-            return ORBOT.name == name
         }
 
         fun isProxyProviderWireguard(): Boolean {
@@ -295,7 +280,6 @@ internal constructor(
                 return when (name) {
                     WIREGUARD.name -> WIREGUARD
                     CUSTOM.name -> CUSTOM
-                    ORBOT.name -> ORBOT
                     TCP.name -> TCP
                     else -> NONE
                 }
@@ -548,21 +532,6 @@ internal constructor(
             customHttpEndpoint = proxyEndpointRepository.getHttpProxyDetails()
         }
         return customHttpEndpoint
-    }
-
-    suspend fun getConnectedOrbotProxy(): ProxyEndpoint? {
-        if (orbotEndpoint == null) {
-            orbotEndpoint = proxyEndpointRepository.getConnectedOrbotProxy()
-        }
-        return orbotEndpoint
-    }
-
-    suspend fun getOrbotSocks5Endpoint(): ProxyEndpoint? {
-        return proxyEndpointRepository.getOrbotSocks5Endpoint()
-    }
-
-    suspend fun getOrbotHttpEndpoint(): ProxyEndpoint? {
-        return proxyEndpointRepository.getOrbotHttpEndpoint()
     }
 
     fun isTcpProxyEnabled(): Boolean {
@@ -832,11 +801,6 @@ internal constructor(
         )
     }
 
-    suspend fun isOrbotDns(): Boolean {
-        if (!getDnsType().isDnsProxy()) return false
-
-        return dnsProxyEndpointRepository.getSelectedProxy()?.proxyName == ORBOT_DNS
-    }
 
     suspend fun handleDnscryptChanges(dnsCryptEndpoint: DnsCryptEndpoint) {
         // if the prev connection was not dnscrypt, then remove the connection status from database
@@ -852,10 +816,6 @@ internal constructor(
             "DNSCrypt endpoint changed",
             "DNSCrypt endpoint changed to ${dnsCryptEndpoint.dnsCryptName}, prev: $prev"
         )
-    }
-
-    suspend fun getOrbotDnsProxyEndpoint(): DnsProxyEndpoint? {
-        return dnsProxyEndpointRepository.getOrbotDnsEndpoint()
     }
 
     suspend fun handleDnsrelayChanges(endpoint: DnsCryptRelayEndpoint) {
@@ -1068,11 +1028,6 @@ internal constructor(
             return
         }
 
-        if (provider == ProxyProvider.ORBOT) {
-            setProxy(proxyType, provider)
-            return
-        }
-
         if (provider == ProxyProvider.TCP) {
             setProxy(proxyType, provider)
             return
@@ -1101,14 +1056,9 @@ internal constructor(
     }
 
     fun removeAllProxies() {
-        removeOrbot()
         persistentState.proxyProvider = ProxyProvider.NONE.name
         persistentState.proxyType = ProxyType.NONE.name
         persistentState.updateProxyStatus()
-    }
-
-    private fun removeOrbot() {
-        OrbotHelper.selectedProxyType = ProxyType.NONE.name
     }
 
     fun removeProxy(removeType: ProxyType, removeProvider: ProxyProvider) {
@@ -1171,10 +1121,6 @@ internal constructor(
             return TunProxyMode.WIREGUARD
         }
 
-        if (ProxyProvider.ORBOT.name == provider) {
-            return TunProxyMode.ORBOT
-        }
-
         when (type) {
             ProxyType.HTTP.name -> {
                 return TunProxyMode.HTTPS
@@ -1206,11 +1152,6 @@ internal constructor(
 
         val proxyType = ProxyType.of(persistentState.proxyType)
         return proxyType.isProxyTypeSocks5() || proxyType.isProxyTypeHttpSocks5()
-    }
-
-    fun isOrbotProxyEnabled(): Boolean {
-        val proxyProvider = ProxyProvider.getProxyProvider(persistentState.proxyProvider)
-        return proxyProvider.isProxyProviderOrbot()
     }
 
     fun isWgEnabled(): Boolean {
@@ -1254,12 +1195,6 @@ internal constructor(
             (proxyProvider.isProxyProviderNone() || proxyProvider.isProxyProviderTcp())
     }
 
-    fun canEnableOrbotProxy(): Boolean {
-        val proxyProvider = ProxyProvider.getProxyProvider(persistentState.proxyProvider)
-        return canEnableProxy() &&
-            (proxyProvider.isProxyProviderNone() || proxyProvider.isProxyProviderOrbot())
-    }
-
     suspend fun getConnectedSocks5Proxy(): ProxyEndpoint? {
         return proxyEndpointRepository.getConnectedSocks5Proxy()
     }
@@ -1277,19 +1212,10 @@ internal constructor(
         addProxy(ProxyType.SOCKS5, ProxyProvider.CUSTOM)
     }
 
-    suspend fun updateOrbotProxy(proxyEndpoint: ProxyEndpoint) {
-        proxyEndpointRepository.update(proxyEndpoint)
-        orbotEndpoint = proxyEndpoint
-    }
-
     suspend fun updateCustomHttpProxy(proxyEndpoint: ProxyEndpoint) {
         proxyEndpointRepository.update(proxyEndpoint)
         customHttpEndpoint = proxyEndpoint
         addProxy(ProxyType.HTTP, ProxyProvider.CUSTOM)
-    }
-
-    suspend fun updateOrbotHttpProxy(proxyEndpoint: ProxyEndpoint) {
-        proxyEndpointRepository.update(proxyEndpoint)
     }
 
     fun stats(): String {

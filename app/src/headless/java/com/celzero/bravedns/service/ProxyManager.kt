@@ -19,7 +19,6 @@ import com.celzero.bravedns.database.AppInfo
 import org.koin.core.component.KoinComponent
 
 object ProxyManager : KoinComponent {
-    const val ID_ORBOT_BASE = "ORBOT"
     const val ID_WG_BASE = "wg"
     const val ID_TCP_BASE = "TCP"
     const val ID_S5_BASE = "S5"
@@ -27,9 +26,7 @@ object ProxyManager : KoinComponent {
 
     enum class ProxyMode(val value: Int) {
         SOCKS5(0),
-        HTTP(1),
-        ORBOT_SOCKS5(2),
-        ORBOT_HTTP(3);
+        HTTP(1);
 
         companion object {
             fun get(v: Int?): ProxyMode? {
@@ -37,8 +34,6 @@ object ProxyManager : KoinComponent {
                 return when (v) {
                     SOCKS5.value -> SOCKS5
                     HTTP.value -> HTTP
-                    ORBOT_SOCKS5.value -> ORBOT_SOCKS5
-                    ORBOT_HTTP.value -> ORBOT_HTTP
                     else -> null
                 }
             }

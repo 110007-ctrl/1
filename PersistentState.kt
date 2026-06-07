@@ -435,8 +435,6 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
 
     // global lockdown for wireguard proxy
     var wgGlobalLockdown by booleanPref("wg_global_lockdown").withDefault<Boolean>(false)
-
-    var orbotConnectionStatus: MutableLiveData<Boolean> = MutableLiveData()
     var vpnEnabledLiveData: MutableLiveData<Boolean> = MutableLiveData()
     var universalRulesCount: MutableLiveData<Int> = MutableLiveData()
     private var proxyStatus: MutableLiveData<Int> = MutableLiveData()

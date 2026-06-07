@@ -33,8 +33,8 @@ class PurgeConnectionLogs(val context: Context, workerParameters: WorkerParamete
     private val eventLogger by inject<EventLogger>()
 
     companion object {
-        const val NUMBER_OF_DAYS_TO_PURGE = -7
-        const val NUMBER_OF_DAYS_TO_PURGE_EVENTS = 4
+        const val NUMBER_OF_DAYS_TO_PURGE = -2
+        const val NUMBER_OF_DAYS_TO_PURGE_EVENTS = 2
     }
 
     override suspend fun doWork(): Result {
@@ -42,7 +42,7 @@ class PurgeConnectionLogs(val context: Context, workerParameters: WorkerParamete
         val calendar = Calendar.getInstance()
         calendar.add(Calendar.DAY_OF_YEAR, NUMBER_OF_DAYS_TO_PURGE)
         val date = calendar.time.time
-        Logger.i(LOG_TAG_SCHEDULER, "purging logs older than 7 days, date: $date")
+        Logger.i(LOG_TAG_SCHEDULER, "purging logs older than 2 days, date: $date")
 
         /**
          * purge logs older than 7 days (on version v053l, subject to change in later versions based

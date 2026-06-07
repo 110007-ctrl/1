@@ -1911,13 +1911,7 @@ class HomeScreenFragment : Fragment(R.layout.fragment_home_screen) {
                 statusId = R.string.status_protected_with_private_dns
                 colorId = fetchTextColor(R.color.primaryLightColorText)
             } else if (appConfig.getBraveMode().isDnsMode()) {
-                statusId = R.string.status_protected
-            } else if (appConfig.isOrbotProxyEnabled() && isPrivateDnsActive(requireContext())) {
-                statusId = R.string.status_protected_with_tor_private_dns
-                colorId = fetchTextColor(R.color.primaryLightColorText)
-            } else if (appConfig.isOrbotProxyEnabled()) {
-                statusId = R.string.status_protected_with_tor
-            } else if (
+                statusId = R.string.status_protected } else if (            } else if (
                 (appConfig.isCustomSocks5Enabled() && appConfig.isCustomHttpProxyEnabled()) &&
                 isPrivateDnsActive(requireContext())
             ) { // SOCKS5 + Http + PrivateDns
