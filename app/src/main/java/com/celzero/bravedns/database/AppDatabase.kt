@@ -533,9 +533,7 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_12_13: Migration =
             object : Migration(12, 13) {
                 override fun migrate(db: SupportSQLiteDatabase) {
-                    db.execSQL(
-                        "INSERT OR REPLACE INTO DNSProxyEndpoint(proxyName, proxyType, proxyAppName, proxyIP, proxyPort, isSelected, isCustom, modifiedDataTime,latency) values ('Orbot','External','org.torproject.android','127.0.0.1',5400,0,0,0,0)"
-                    )
+                    // no-op: Orbot proxy endpoint insertion removed
                 }
             }
 
@@ -874,13 +872,6 @@ abstract class AppDatabase : RoomDatabase() {
                         "CASE WHEN EXISTS (select isSelected from ProxyEndpoint_backup where proxyName = 'Socks5') THEN (select isSelected from ProxyEndpoint_backup where proxyName = 'Socks5') ELSE 0 END"
                     val isUDPSocks5 =
                         "CASE WHEN EXISTS (select isUDP from ProxyEndpoint_backup where proxyName = 'Socks5') THEN (select isUDP from ProxyEndpoint_backup where proxyName = 'Socks5') ELSE 0 END"
-                    // orbot
-                    val pipOrbot =
-                        "CASE WHEN EXISTS (select proxyIP from ProxyEndpoint_backup where proxyName = 'ORBOT') THEN (select proxyIP from ProxyEndpoint_backup where proxyName = 'ORBOT') ELSE '127.0.0.1' END"
-                    val portOrbot =
-                        "CASE WHEN EXISTS (select proxyPort from ProxyEndpoint_backup where proxyName = 'ORBOT') THEN (select proxyPort from ProxyEndpoint_backup where proxyName = 'ORBOT') ELSE 9050 END"
-                    val isSelectedOrbot =
-                        "CASE WHEN EXISTS (select isSelected from ProxyEndpoint_backup where proxyName = 'ORBOT') THEN (select isSelected from ProxyEndpoint_backup where proxyName = 'ORBOT') ELSE 0 END"
 
                     // backup the table ProxyEndpoint
                     db.execSQL("DROP TABLE IF EXISTS ProxyEndpoint_backup")
@@ -896,12 +887,6 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     db.execSQL(
                         "INSERT INTO ProxyEndpoint (proxyName, proxyMode, proxyType, proxyAppName, proxyIP, userName, password, proxyPort, isSelected, isCustom, isUDP, modifiedDataTime, latency) VALUES('HTTP', 1, 'NONE', '', '', '', '', 0, 0, 0, 0, 0, 0)"
-                    )
-                    db.execSQL(
-                        "INSERT INTO ProxyEndpoint (proxyName, proxyMode, proxyType, proxyAppName, proxyIP, userName, password, proxyPort, isSelected, isCustom, isUDP, modifiedDataTime, latency) VALUES('SOCKS5 Orbot', 2, 'NONE', 'org.torproject.android', ($pipOrbot), '', '', ($portOrbot), ($isSelectedOrbot), 0, 0, 0, 0)"
-                    )
-                    db.execSQL(
-                        "INSERT INTO ProxyEndpoint (proxyName, proxyMode, proxyType, proxyAppName, proxyIP, userName, password, proxyPort, isSelected, isCustom, isUDP, modifiedDataTime, latency) VALUES('HTTP Orbot', 3, 'NONE', 'org.torproject.android', '', '', '', 0, 0, 0, 0, 0, 0)"
                     )
                     db.execSQL("DROP TABLE IF EXISTS ProxyEndpoint_backup")
                     Logger.i(LOG_TAG_APP_DB, "MIGRATION_20_21: added DoT and ODoH endpoints")

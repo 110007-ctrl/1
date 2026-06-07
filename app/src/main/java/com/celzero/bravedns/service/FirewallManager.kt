@@ -31,7 +31,6 @@ import com.celzero.bravedns.service.FirewallManager.GlobalVariable.appInfosLiveD
 import com.celzero.bravedns.service.FirewallManager.GlobalVariable.foregroundUids
 import com.celzero.bravedns.util.AndroidUidConfig
 import com.celzero.bravedns.util.Constants.Companion.RETHINK_PACKAGE
-import com.celzero.bravedns.util.OrbotHelper
 import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import com.google.common.cache.RemovalCause
@@ -454,13 +453,6 @@ object FirewallManager : KoinComponent {
     suspend fun getNonFirewalledAppsPackageNames(): List<AppInfo> {
         mutex.withLock {
             return appInfos.values().filter { it.connectionStatus == ConnectionStatus.ALLOW.id }
-        }
-    }
-
-    // TODO: Use the package-manager API instead
-    suspend fun isOrbotInstalled(): Boolean {
-        mutex.withLock {
-            return appInfos.values().any { it.packageName == OrbotHelper.ORBOT_PACKAGE_NAME && it.tombstoneTs == 0L }
         }
     }
 

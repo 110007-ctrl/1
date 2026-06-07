@@ -28,8 +28,6 @@ import java.util.concurrent.CopyOnWriteArraySet
 object ProxyManager : KoinComponent {
 
     private val db: ProxyAppMappingRepository by inject()
-
-    const val ID_ORBOT_BASE = "ORBOT"
     const val ID_WG_BASE = "wg"
     const val ID_TCP_BASE = "TCP"
     const val ID_S5_BASE = "S5"
@@ -38,7 +36,6 @@ object ProxyManager : KoinComponent {
     const val ID_RPN_WIN = "RPN-WIN" // rpn win proxy
 
     const val TCP_PROXY_NAME = "Rethink-Proxy"
-    const val ORBOT_PROXY_NAME = "Orbot"
 
     // we are using ProxyAppMapTuple instead of ProxyApplicationMapping for the pamSet as the equals
     // and hash method implementation is overridden and cannot be used for the pamSet
@@ -47,15 +44,11 @@ object ProxyManager : KoinComponent {
     // Proxy mode values
     private const val PROXY_MODE_SOCKS5 = 0
     private const val PROXY_MODE_HTTP = 1
-    private const val PROXY_MODE_ORBOT_SOCKS5 = 2
-    private const val PROXY_MODE_ORBOT_HTTP = 3
 
     // TODO: consider adding other proxy modes (e.g, Wireguard, Rethink, etc.)
     enum class ProxyMode(val value: Int) {
         SOCKS5(PROXY_MODE_SOCKS5),
-        HTTP(PROXY_MODE_HTTP),
-        ORBOT_SOCKS5(PROXY_MODE_ORBOT_SOCKS5),
-        ORBOT_HTTP(PROXY_MODE_ORBOT_HTTP);
+        HTTP(PROXY_MODE_HTTP),;
 
         companion object {
             fun get(v: Int?): ProxyMode? {
@@ -63,8 +56,6 @@ object ProxyManager : KoinComponent {
                 return when (v) {
                     SOCKS5.value -> SOCKS5
                     HTTP.value -> HTTP
-                    ORBOT_SOCKS5.value -> ORBOT_SOCKS5
-                    ORBOT_HTTP.value -> ORBOT_HTTP
                     else -> null
                 }
             }
@@ -76,14 +67,6 @@ object ProxyManager : KoinComponent {
 
         fun isCustomHttp(): Boolean {
             return this == HTTP
-        }
-
-        fun isOrbotSocks5(): Boolean {
-            return this == ORBOT_SOCKS5
-        }
-
-        fun isOrbotHttp(): Boolean {
-            return this == ORBOT_HTTP
         }
     }
 
@@ -354,7 +337,7 @@ object ProxyManager : KoinComponent {
 
     private fun isValidProxyPrefix(pid: String): Boolean {
         if (pid == ID_NONE || pid == "") return false
-        return pid.startsWith(ID_ORBOT_BASE) ||
+        return
             pid.startsWith(ID_WG_BASE) ||
             pid.startsWith(ID_TCP_BASE) ||
             pid.startsWith(ID_S5_BASE) ||
@@ -380,7 +363,6 @@ object ProxyManager : KoinComponent {
 
     fun isAnyUserSetProxy(proxyId: String): Boolean {
         return proxyId.startsWith(ID_WG_BASE) ||
-            proxyId.startsWith(ID_ORBOT_BASE) ||
             proxyId.startsWith(ID_S5_BASE) ||
             proxyId.startsWith(ID_HTTP_BASE) ||
             proxyId.endsWith(Backend.RPN)
