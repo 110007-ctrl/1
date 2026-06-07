@@ -5506,7 +5506,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         if (
             !appConfig.isCustomSocks5Enabled() &&
             !appConfig.isCustomHttpProxyEnabled() &&
-            !appConfig.isDnsProxyActive() &&
+            !appConfig.isDnsProxyActive()
         ) {
             return false
         }
