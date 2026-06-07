@@ -384,13 +384,17 @@ class ConnectionTrackerFragment :
                 .create()
                 .show()
         } else {
-            // Default deletion behavior - delete all logs
+            // Default deletion: all logs, or logs older than 2 days
             MaterialAlertDialogBuilder(requireContext(), R.style.App_Dialog_NoDim)
                 .setTitle(R.string.conn_track_clear_logs_title)
                 .setMessage(R.string.conn_track_clear_logs_message)
                 .setCancelable(true)
                 .setPositiveButton(getString(R.string.dns_log_dialog_positive)) { _, _ ->
                     io { connectionTrackerRepository.clearAllData() }
+                }
+                .setNeutralButton(getString(R.string.conn_track_delete_old_logs)) { _, _ ->
+                    val twoDaysAgo = System.currentTimeMillis() - (2L * 24 * 60 * 60 * 1000)
+                    io { connectionTrackerRepository.purgeLogsByDate(twoDaysAgo) }
                 }
                 .setNegativeButton(getString(R.string.lbl_cancel)) { _, _ -> }
                 .create()
