@@ -2740,6 +2740,10 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                 Logger.i(LOG_TAG_VPN, "$reason, vpnRestart=${!isLoopbackSocks5}")
                 vpnAdapter?.setCustomProxy(tunProxyMode)
             }
+
+            AppConfig.ProxyProvider.ORBOT -> {
+                // no-op: Orbot support removed
+            }
         }
     }
 
@@ -5497,7 +5501,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         if (
             !appConfig.isCustomSocks5Enabled() &&
             !appConfig.isCustomHttpProxyEnabled() &&
-            !appConfig.isDnsProxyActive() &&
+            !appConfig.isDnsProxyActive()
         ) {
             return false
         }
