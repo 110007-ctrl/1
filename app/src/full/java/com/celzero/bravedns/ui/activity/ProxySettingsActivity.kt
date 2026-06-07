@@ -710,7 +710,6 @@ class ProxySettingsActivity : AppCompatActivity(R.layout.fragment_proxy_configur
             }
         }
     }
-    }
 
     private fun showSocks5ProxyDialog(
         endpoint: ProxyEndpoint,
