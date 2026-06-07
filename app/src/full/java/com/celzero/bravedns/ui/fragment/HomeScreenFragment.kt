@@ -1911,7 +1911,8 @@ class HomeScreenFragment : Fragment(R.layout.fragment_home_screen) {
                 statusId = R.string.status_protected_with_private_dns
                 colorId = fetchTextColor(R.color.primaryLightColorText)
             } else if (appConfig.getBraveMode().isDnsMode()) {
-                statusId = R.string.status_protected } else if (            } else if (
+                statusId = R.string.status_protected
+            } else if (
                 (appConfig.isCustomSocks5Enabled() && appConfig.isCustomHttpProxyEnabled()) &&
                 isPrivateDnsActive(requireContext())
             ) { // SOCKS5 + Http + PrivateDns
