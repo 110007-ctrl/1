@@ -597,7 +597,7 @@ class PersistentState(context: Context) : SimpleKrate(context), KoinComponent {
                 AppConfig.ProxyProvider.WIREGUARD -> {
                     R.string.lbl_wireguard
                 }
-                AppConfig.ProxyProvider.TCP -> {                }
+                AppConfig.ProxyProvider.TCP -> { -1 }
                 AppConfig.ProxyProvider.CUSTOM -> {
                     val type = AppConfig.ProxyType.of(proxyType)
                     when (type) {
