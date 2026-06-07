@@ -243,9 +243,14 @@ object UsqueManager {
     /** Quick check (300ms) whether the SOCKS port is already accepting connections. */
     fun isPortAlive(): Boolean {
         return try {
-            java.net.Socket().use { s ->
-                s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 300)
-                true
+            android.net.TrafficStats.setThreadStatsTag(android.os.Process.myTid())
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 300)
+                    true
+                }
+            } finally {
+                android.net.TrafficStats.clearThreadStatsTag()
             }
         } catch (_: Exception) { false }
     }
@@ -263,7 +268,8 @@ object UsqueManager {
           // 1.1.1.1:80 (Cloudflare DNS-over-HTTP) is ideal: same operator as WARP, always up.
           // REP byte 0x00 = "succeeded" → upstream alive. Anything else or exception → dead.
           try {
-              java.net.Socket().use { s ->
+              android.net.TrafficStats.setThreadStatsTag(android.os.Process.myTid())
+              try { java.net.Socket().use { s ->
                   s.soTimeout = 5000
                   s.connect(java.net.InetSocketAddress(SOCKS_HOST, SOCKS_PORT), 2000)
                   val out = s.getOutputStream()
@@ -284,6 +290,7 @@ object UsqueManager {
                   // rep[1] == 0x00 means "succeeded" — upstream reached 1.1.1.1
                   n >= 2 && rep[0] == 5.toByte() && rep[1] == 0x00.toByte()
               }
+          } finally { android.net.TrafficStats.clearThreadStatsTag() }
           } catch (_: Exception) { false }
       }
   
