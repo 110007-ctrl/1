@@ -393,8 +393,8 @@ class ConnectionTrackerFragment :
                     io { connectionTrackerRepository.clearAllData() }
                 }
                 .setNeutralButton(getString(R.string.conn_track_delete_old_logs)) { _, _ ->
-                    val twoDaysAgo = System.currentTimeMillis() - (2L * 24 * 60 * 60 * 1000)
-                    io { connectionTrackerRepository.purgeLogsByDate(twoDaysAgo) }
+                    val threeDaysAgo = System.currentTimeMillis() - (3L * 24 * 60 * 60 * 1000)
+                    io { connectionTrackerRepository.purgeLogsByDate(threeDaysAgo) }
                 }
                 .setNegativeButton(getString(R.string.lbl_cancel)) { _, _ -> }
                 .create()
