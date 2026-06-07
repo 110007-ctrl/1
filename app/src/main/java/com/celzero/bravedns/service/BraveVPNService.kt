@@ -2740,10 +2740,6 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                 Logger.i(LOG_TAG_VPN, "$reason, vpnRestart=${!isLoopbackSocks5}")
                 vpnAdapter?.setCustomProxy(tunProxyMode)
             }
-
-            AppConfig.ProxyProvider.ORBOT -> {
-                // no-op: Orbot support removed
-            }
         }
     }
 
