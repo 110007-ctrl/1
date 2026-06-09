@@ -207,6 +207,7 @@ class Constants {
         const val NOTIF_ACTION_RULES_FAILURE = "RETHINK_RULES_RELOAD" // load rules failure
         const val NOTIF_ACTION_NEW_APP_ALLOW = "NEW_APP_ALLOW" // allow network access for new apps
         const val NOTIF_ACTION_NEW_APP_DENY = "NEW_APP_DENY" // deny network access for new apps
+        const val NOTIF_ACTION_REPOST_VPN = "RETHINK_REPOST" // repost persistent notification after user dismissal
 
         // various notification intent extra name/values used part of notification's pending-intent
         const val NOTIF_INTENT_EXTRA_ACCESSIBILITY_NAME =
