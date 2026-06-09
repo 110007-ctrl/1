@@ -176,6 +176,12 @@ object VpnController : KoinComponent {
         braveVpnService?.signalStopService(reason, userInitiated = true)
     }
 
+    // Re-post the persistent VPN notification.  Called when the user dismisses it on
+    // Android 14+ where the OS no longer blocks swipe-to-dismiss on ongoing notifications.
+    fun repostNotification() {
+        braveVpnService?.repostNotification()
+    }
+
     @Suppress("DEPRECATION")
     fun state(): VpnState {
         val requested: Boolean = persistentState.getVpnEnabled()

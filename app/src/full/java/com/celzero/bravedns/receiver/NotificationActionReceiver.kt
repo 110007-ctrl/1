@@ -61,6 +61,9 @@ class NotificationActionReceiver : BroadcastReceiver(), KoinComponent {
             Constants.NOTIF_ACTION_DNS_FIREWALL_VPN -> {
                 dnsFirewallMode()
             }
+            Constants.NOTIF_ACTION_REPOST_VPN -> {
+                repostNotification()
+            }
             Constants.NOTIF_ACTION_RULES_FAILURE -> {
                 reloadRules()
             }
@@ -87,6 +90,10 @@ class NotificationActionReceiver : BroadcastReceiver(), KoinComponent {
                 modifyAppFirewallSettings(context, uid, FirewallManager.ConnectionStatus.BOTH)
             }
         }
+    }
+
+    private fun repostNotification() {
+        VpnController.repostNotification()
     }
 
     private fun reloadRules() {

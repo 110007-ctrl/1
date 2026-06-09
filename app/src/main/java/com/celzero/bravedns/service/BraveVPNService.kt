@@ -272,6 +272,7 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         private const val NOTIF_ACTION_MODE_STOP = 100
         private const val NOTIF_ACTION_MODE_DNS_ONLY = 101
         private const val NOTIF_ACTION_MODE_DNS_FIREWALL = 102
+        private const val NOTIF_ACTION_MODE_REPOST = 103
 
         private const val NOTIF_ID_ACCESSIBILITY_FAILURE = 104
 
@@ -1858,6 +1859,12 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         // make it ongoing to prevent that. https://github.com/celzero/rethink-app/issues/1136
         if (persistentState.persistentNotification) {
             builder.setOngoing(true)
+            // On Android 14+ (API 34+) the OS allows users to dismiss foreground-service
+            // notifications even when FLAG_ONGOING_EVENT is set.  Work around this by
+            // attaching a deleteIntent that immediately re-posts the notification whenever
+            // the user manages to swipe it away.
+            val repostIntent = makeVpnIntent(NOTIF_ACTION_MODE_REPOST, Constants.NOTIF_ACTION_REPOST_VPN)
+            builder.setDeleteIntent(repostIntent)
         } else {
             builder.setOngoing(false)
         }
@@ -1868,9 +1875,10 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         val notification = builder.build()
 
         if (persistentState.persistentNotification) {
-            notification.flags = Notification.FLAG_ONGOING_EVENT
+            // OR the flags so that other builder-set flags are preserved
+            notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT
         } else {
-            notification.flags = Notification.FLAG_NO_CLEAR
+            notification.flags = notification.flags or Notification.FLAG_NO_CLEAR
         }
         return notification
     }
@@ -3714,6 +3722,12 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
     private fun handleVpnServiceOnAppStateChange() { // paused or resumed
         val reason = if (isAppPaused()) "pause" else "resume"
         vpnRestartTrigger.value = reason
+        ui { notificationManager.notify(SERVICE_ID, updateNotificationBuilder()) }
+    }
+
+    // Called when a persistent notification is swiped away on Android 14+ to immediately
+    // re-post it, ensuring it stays visible as long as the VPN is running.
+    fun repostNotification() {
         ui { notificationManager.notify(SERVICE_ID, updateNotificationBuilder()) }
     }
 
