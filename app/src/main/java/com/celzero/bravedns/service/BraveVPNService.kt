@@ -2810,6 +2810,9 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
             // against UAF when two threads race closeTun on the same go-side handle).
             val adapter = vpnAdapter
             vpnAdapter = null
+            // Fix: clear stale DNS cache so the replacement adapter always receives
+            // setSystemDns unconditionally — avoids "dns: same? true" skip on next connect.
+            prevDns.clear()
             if (adapter == null) {
                 Logger.i(LOG_TAG_VPN, "vpn adapter already stopped")
                 return@withContext
@@ -2924,7 +2927,11 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                     LOG_TAG_VPN,
                     "---------------------------RESTART-OK----------------------------"
                 )
-
+                // Fix: push system DNS to the freshly-created adapter immediately.
+                // prevDns was cleared in makeOrUpdateVpnAdapter, so same=false is
+                // guaranteed and setSystemDns will be called on the new adapter without
+                // waiting for the next onNetworkConnected callback.
+                setNetworkAndDefaultDnsIfNeeded(forceUpdate = true)
                 notifyConnectionStateChangeIfNeeded()
                 informVpnControllerForProtoChange(builderRoutes)
             } catch (e: Exception) {
@@ -2997,6 +3004,9 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
                     val ifaceAddresses = getAddresses()
                     Logger.i(LOG_TAG_VPN, "vpn-adapter doesn't exists, create one, fd: $fd, lockdown: $lockdown, protos: $protos, ifaddr: $ifaceAddresses, opts: $opts, mtu: $mtu, nwMtu: $nwMtu")
                     GoVpnAdapter.setLogLevel(persistentState.goLoggerLevel.toInt())
+                    // Fix: discard stale DNS so the brand-new adapter receives setSystemDns
+                    // unconditionally on the very next setNetworkAndDefaultDnsIfNeeded call.
+                    prevDns.clear()
                     vpnAdapter = GoVpnAdapter(ctx, vpnScope, fd, ifaceAddresses, mtu, nwMtu, opts) // may throw
                     vpnAdapter?.initResolverProxiesPcap(opts)
                     //checkForPlusSubscription()
@@ -3256,7 +3266,11 @@ class BraveVPNService : VpnService(), ConnectionMonitor.NetworkListener, Bridge,
         underlyingNetworks?.vpnLockdown = isLockdown()
 
         // always reset the system dns server ip of the active network with the tunnel
-        setNetworkAndDefaultDnsIfNeeded(isRoutesChanged || isBoundNetworksChanged)
+        // Fix: forceRestart=true means the underlying interface changed (e.g. 4G→WiFi).
+        // Force the DNS transport to reconnect even when server IPs appear identical
+        // across both interfaces; without this "dns: same? true" suppresses setSystemDns
+        // on the new link, leaving the transport bound to the now-stale cellular socket.
+        setNetworkAndDefaultDnsIfNeeded(isRoutesChanged || isBoundNetworksChanged || forceRestart)
 
         val underlyingNws = getUnderlays()
         setUnderlyingNetworks(underlyingNws)
